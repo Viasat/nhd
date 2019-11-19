@@ -1,4 +1,4 @@
-![Logo](https://git.viasat.com/mach3-phy/nhd/blob/master/img/nhd_small.png)
+![Logo](https://github.com/Viasat/nhd/blob/master/img/nhd_small.png)
 
 nhd is a custom scheduler used for the sigproc team's Kubernetes cluster. The scheduler is aware of low-level hardware details, such as CPU count, hyperthreading, GPUs, NUMA nodes, NICs, and more. Using this knowledge, the scheduler can make a better decision than the default Kubernetes scheduler for workload placement. This is especially important for high-throughput and low-latency tasks used by the sigproc team.
 
