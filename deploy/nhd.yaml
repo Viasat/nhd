@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nhd
+  labels:
+    app: nhd-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nhd-scheduler
+  template:
+    metadata:
+      name: nhd-scheduler
+      labels:
+        app: nhd-scheduler
+    spec:
+      serviceAccount: nhd-account
+      containers:
+      - image: REPLACE_WITH_PUBLIC_REPO
+        imagePullPolicy: Always
+        name: nhd-main
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "1000m"
+            ephemeral-storage: "1Gi"
+          limits:
+            memory: "1024Mi"
+            cpu: "2000m"   
+            ephemeral-storage: "2Gi"        
+      imagePullSecrets:
+      - name: regcred
+      restartPolicy: Always  
+

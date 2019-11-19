@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package NhdStats;
+
+enum NHDStatus {
+    NHD_STATUS_OK = 0;
+    NHD_STATUS_ERR = 1;
+}
+
+message Empty {
+    uint32 nothing = 1;
+}
+
+message NICInfoBrief {
+    uint32 used_rx = 1;
+    uint32 used_tx = 2;
+}
+
+message NodeInfo {
+    string name = 1;
+    uint32 free_cpus = 2;
+    uint32 used_cpus = 3;
+    uint32 free_gpus = 4;
+    uint32 used_gpus = 5;
+    uint32 free_hugepages = 6;
+    uint32 used_hugepages = 7;
+    uint32 total_pods = 8;
+    repeated NICInfoBrief nic_info = 9;
+}
+
+message NodeStats {
+    NHDStatus status = 1;
+    repeated NodeInfo info = 2;
+}
+
+service NHDControl {
+    rpc GetBasicNodeStats (Empty) returns (NodeStats) {}
+}

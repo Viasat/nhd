@@ -1,0 +1,5 @@
+kubernetes>=10.0.0
+colorlog>=4.0.2
+grpcio
+libconf>=2.0.0
+magicattr>=0.1.4

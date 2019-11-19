@@ -1,0 +1,10 @@
+env/
+nhd.egg-info/
+nhd/__pycache__/
+objdir.txt
+tmpdir.txt
+*.whl
+nhd*.tar.gz
+obj/
+.vscode/
+build/

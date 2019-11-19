@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+import logging
+import os
+import threading
+from colorlog import ColoredFormatter
+import pkg_resources
+from nhd.NHDCommon import NHDCommon
+from nhd.NHDScheduler import NHDScheduler
+from nhd.NHDRpcServer import NHDRpcServer
+from queue import Queue
+
+
+if __name__ == "__main__":
+    logger = NHDCommon.GetLogger(__name__)
+    threads = []
+    q = Queue(maxsize=128)
+
+    try:
+        threads.append(NHDScheduler(q))
+        threads.append(NHDRpcServer(q))
+
+        for t in threads:
+            t.start()
+        
+        for t in threads:
+            t.join()
+
+    except KeyboardInterrupt:
+        logger.warning("Exiting NHD")
+        os._exit(1)
+
+
