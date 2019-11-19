@@ -128,7 +128,7 @@ A pod consumes zero or more entire GPUs; since GPUs are not shareable, no other 
 #### NICs
 NICs are the only shareable resource allowed by NHD. This is done because the interface speeds may be 100Gbps or more, and it's very likely a single pod does not need to consume the entire interface. Only the secondary interface(s) on the system are schedulable by NHD, since the primary interface is typically control/management plane and does not need topology guarantees.
 
-To schedule NIC resources, the pod gives a hint as to how much bandwidth is needed per CPU core. NHD accumulates all bandwidth requests, and attempts to find one or more interfaces feasible for the request. If a request is feasible, the interface information is annotated in the pod spec. It is then up to Aviato (https://git.viasat.com/mach3-phy/aviato) to appropriately set up the flows so that the traffic goes to the correct pod.
+To schedule NIC resources, the pod gives a hint as to how much bandwidth is needed per CPU core. NHD accumulates all bandwidth requests, and attempts to find one or more interfaces feasible for the request. If a request is feasible, the interface information is annotated in the pod spec.
 
 # Debugging
 To debug deployment issues with NHD, most issues can be seen by either looking at Kubernetes events, or the log of NHD. Only major events will be shown in the Kubernetes event log. All NHD events will start with the string "NHD", and can be filtered with grep. For example, to view events in my-namespace:
