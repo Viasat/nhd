@@ -1,6 +1,6 @@
-![Logo](https://git.viasat.com/mach3-phy/nhd/blob/master/img/nhd_small.png)
+![Logo](https://github.com/Viasat/nhd/blob/master/img/nhd_small.png)
 
-nhd is a custom scheduler used for the sigproc team's Kubernetes cluster. The scheduler is aware of low-level hardware details, such as CPU count, hyperthreading, GPUs, NUMA nodes, NICs, and more. Using this knowledge, the scheduler can make a better decision than the default Kubernetes scheduler for workload placement. This is especially important for high-throughput and low-latency tasks used by the sigproc team.
+NHD is a topology-aware custom scheduler used for Kubernetes. The scheduler is aware of low-level hardware details, such as CPU count, hyperthreading, GPUs, NUMA nodes, NICs, and more. Using this knowledge, the scheduler can make a better decision than the default Kubernetes scheduler for workload placement. This is especially important for high-throughput and low-latency tasks.
 
 - [Requirements](#requirements)
 - [Installing](#installing)
@@ -123,12 +123,12 @@ At the moment, these are the attributes that NHD filters on:
 As mentioned above, CPU cores are an exclusive resource, and are not allowed to be shared across pods. A node may either have SMT enabled or disabled, so the cores are treated differently in each case. It is the pod's responsibility to specify whether certain functions are allowed to share a sibling core, or if they must have a completely isolated physical core.
 
 #### GPUs
-A pod consumes zero or more entire GPUs; since GPUs are not shareable, no other pod will utilize those devices. All GPUs are not created equal, and it's important which CPU and NIC the GPU maps to. For that reason, the k8s device plugin from Nvidia (https://github.com/NVIDIA/k8s-device-plugin) cannot be used since it masks the GPU device ID, and provides no NUMA or PCIe topology guarantees. NHD is responsible for tracking which physical device IDs are used, as well as whether the unused ones can service a pod based on its topology. A pod may also request a specific model of GPU to guarantee consistent performance.
+A pod consumes zero or more entire GPUs; since NHD doesn't allow GPU sharing, no other pod will utilize those devices. All GPUs are not created equal, and it's important which CPU and NIC the GPU maps to. For that reason, the k8s device plugin from Nvidia (https://github.com/NVIDIA/k8s-device-plugin) cannot be used since it masks the GPU device ID, and provides no NUMA or PCIe topology guarantees. NHD is responsible for tracking which physical device IDs are used, as well as whether the unused ones can service a pod based on its topology. A pod may also request a specific model of GPU to guarantee consistent performance.
 
 #### NICs
 NICs are the only shareable resource allowed by NHD. This is done because the interface speeds may be 100Gbps or more, and it's very likely a single pod does not need to consume the entire interface. Only the secondary interface(s) on the system are schedulable by NHD, since the primary interface is typically control/management plane and does not need topology guarantees.
 
-To schedule NIC resources, the pod gives a hint as to how much bandwidth is needed per CPU core. NHD accumulates all bandwidth requests, and attempts to find one or more interfaces feasible for the request. If a request is feasible, the interface information is annotated in the pod spec. It is then up to Aviato (https://git.viasat.com/mach3-phy/aviato) to appropriately set up the flows so that the traffic goes to the correct pod.
+To schedule NIC resources, the pod gives a hint as to how much bandwidth is needed per CPU core. NHD accumulates all bandwidth requests, and attempts to find one or more interfaces feasible for the request. If a request is feasible, the interface information is annotated in the pod spec.
 
 # Debugging
 To debug deployment issues with NHD, most issues can be seen by either looking at Kubernetes events, or the log of NHD. Only major events will be shown in the Kubernetes event log. All NHD events will start with the string "NHD", and can be filtered with grep. For example, to view events in my-namespace:
