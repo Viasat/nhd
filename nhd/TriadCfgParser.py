@@ -214,6 +214,17 @@ class TriadCfgParser(CfgParser):
                             self.logger.error('Error when parsing NIC fields. Maybe forgot rx/tx_speeds?')
                             return False
 
+                        try:
+                            # CPU workers (no GPUs)
+                            self.logger.info(f'Found {len(attr[0].cpu_workers)} CPU worker cores')
+                            for cidx in range(len(attr[0].cpu_workers)):
+                                cpuname = f'{mattr}.{m.dp_group.name}[0].cpu_workers[{cidx}]'
+                                c = int(magicattr.get(self.cfg, cpuname))
+                                cpucore = Core(cpuname, 0, NICCoreDirection.NIC_CORE_DIRECTION_NONE, NUMASetting.LOGICAL_NUMA_GROUP, c)
+                                pg.AddGroupCore(cpucore)                                
+                        except:
+                            self.logger.info('No CPU workers found, or using the wrong format. Moving on...')                          
+
                         self.logger.info(f'Found {len(attr[0].gpu_map)} GPU cores in GPU map')
                         gpumap = collections.defaultdict(list)
 
@@ -384,7 +395,7 @@ class TriadCfgParser(CfgParser):
             self.SetLibConfigValue(c.vlan.name, c.vlan.vlan)
 
             for pc in c.proc_cores:
-                self.SetLibConfigValue(pc.name, pc.core)
+                self.SetLibConfigValue(pc.name, pc.core)               
 
             for mc in c.misc_cores:
                 self.SetLibConfigValue(mc.name, mc.core)

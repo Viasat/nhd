@@ -185,8 +185,13 @@ class Node:
         return self.smt_enabled
 
     def GetFreeCpuCoreCount(self) -> int:
-        """ Gets the number of free CPU cores available """
-        return len([x for x in self.cores if not x.used])
+        """ Gets the number of free CPU cores available. If SMT is enabled we only count cores where both
+            siblings are unused.
+        """
+        if self.smt_enabled:
+            return len([x for x in self.cores if not x.used and not self.cores[x.sibling].used])
+        else:        
+            return len([x for x in self.cores if not x.used])
 
     def GetFreeGpuCount(self) -> int:
         """ Gets the number of free GPUs """

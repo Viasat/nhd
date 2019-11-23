@@ -24,7 +24,7 @@
 #
 #*******************************************************************************
 
-REPO=artifactory.viasat.com:8151/nhd/
+REPO?=SETME
 NHD_VERSION:=$(shell cat nhd-version)
 NHD_FULLPATH=$(REPO)nhd:$(NHD_VERSION)
 
@@ -193,7 +193,7 @@ $(OBJ)%_pb2_grpc.py : %.proto $(MAKEFILE)
 #**********************************************************************
 # NHD Wheel
 #**********************************************************************
-$(NHD_WHEEL): $(NHD_FILES) setup.py nhd-version bin/nhd
+$(NHD_WHEEL): $(NHD_FILES) setup_template.py nhd-version bin/nhd
 	$(CP) setup_template.py setup.py
 	sed -ri "s/.*version=.*/    version=\"$(NHD_VERSION)\",/g" setup.py
 	python3 setup.py sdist bdist_wheel
