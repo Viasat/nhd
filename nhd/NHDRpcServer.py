@@ -6,8 +6,8 @@ import time
 import sys
 import threading
 sys.path.insert(0, 'obj/')
-import nhd_stats_pb2
-import nhd_stats_pb2_grpc
+from nhd import nhd_stats_pb2
+from nhd import nhd_stats_pb2_grpc
 from queue import Queue
 from queue import Empty
 from nhd.NHDCommon import RpcMsgType
