@@ -167,7 +167,7 @@ class NHDScheduler(threading.Thread):
         self.logger.info(f'Releasing resources for pod {ns}.{podname}')
         cmname, cfgstr = self.k8s.GetCfgMap(podname, ns)
         if cmname == None:
-            self.logger.warning(f'Pod {podname} not found. Possibly already removed from a previous event, such as an error or a job completing. Triggering re-scan of all pods...')
+            self.logger.warning(f'Pod {ns}.{podname} not found. Possibly already removed from a previous event, such as an error or a job completing. Triggering re-scan of all pods...')
             self.ResetResources()
             return
 
@@ -365,32 +365,34 @@ class NHDScheduler(threading.Thread):
             # Start watching for pods that want to be scheduled or are waiting to be freed
             pods = self.k8s.ServicePods(self.sched_name)
 
-            for k,p in pods.items():
-                if p[0] == 'Pending' and p[1] == None and (k not in self.pod_state):
-                    # Normal pod that needs to be scheduled
-                    if not self.AttemptScheduling(k[1],k[0]):
-                        self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}')
-                        self.pod_state[k] = PodStatus.POD_STATUS_FAILED
-                    else:
-                        self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
-
-                elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
-                    self.logger.info(f'Pod {k[0]}.{k[1]} failed to schedule. Removing consumed resources')
-                    self.ReleasePodResources(k[1],k[0])
-                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
-
-            self.logger.debug(f'Done processing {len(pods)} pods. {len(self.pod_state)} pods in cache')
-
             # Check if we need to delete any pods now
             todel = []
             for k,p in self.pod_state.items():
                 if k not in pods:
                     todel.append(k)
-               
+
             for v in todel:
-                self.logger.info(f'Pod {v[0]}.{v[1]} no longer in cluster. Freeing resources')
+                self.logger.info(f'Pod {v[0]}.{v[1]}[{v[2]}] no longer in cluster. Freeing resources')
                 self.ReleasePodResources(v[1],v[0])
                 del self.pod_state[v]
+
+            # Schedule any new pods
+            for k,p in pods.items():
+                if p[0] == 'Pending' and p[1] == None and (k not in self.pod_state):
+                    self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
+                    # Normal pod that needs to be scheduled
+                    if not self.AttemptScheduling(k[1],k[0]):
+                        self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
+                        self.pod_state[k] = PodStatus.POD_STATUS_FAILED
+                    else:
+                        self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
+
+                elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
+                    self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
+                    self.ReleasePodResources(k[1],k[0])
+                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
+
+            self.logger.debug(f'Done processing {len(pods)} pods. {len(self.pod_state)} pods in cache')
 
             # Check RPC before sleeping
             try:
