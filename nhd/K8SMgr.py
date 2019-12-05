@@ -180,7 +180,7 @@ class K8SMgr:
             if i.spec.scheduler_name != sched_name:
                 continue
 
-            pods[(i.metadata.namespace, i.metadata.name)] = (i.status.phase, i.spec.node_name)
+            pods[(i.metadata.namespace, i.metadata.name, i.metadata.uid)] = (i.status.phase, i.spec.node_name)
 
 #            if event['object'].status.phase == "Pending" and event['object'].spec.node_name is None:
 #                try:
