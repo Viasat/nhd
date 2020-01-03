@@ -25,6 +25,9 @@
 #*******************************************************************************
 
 REPO=CHANGEME
+OS_FULLPATH=CHANGEME
+
+
 NHD_VERSION:=$(shell cat nhd-version)
 NHD_FULLPATH=$(REPO)nhd:$(NHD_VERSION)
 
@@ -217,7 +220,7 @@ $(OBJ)objdir.txt:
 #**********************************************************************
 
 $(TARGET): $(GRPC_AUTOGEN_FILES) $(NHD_WHEEL) $(DOCKER_DEPENDS)
-	docker build -f ./deploy/Dockerfile.nhd --build-arg NHD_VERSION=$(NHD_VERSION) -t $(NHD_FULLPATH) ./
+	docker build -f ./deploy/Dockerfile.nhd --build-arg OS_FULLPATH=$(OS_FULLPATH) --build-arg NHD_VERSION=$(NHD_VERSION) -t $(NHD_FULLPATH) ./
 	docker push $(NHD_FULLPATH)
 	docker tag $(NHD_FULLPATH) $(NHD_LATEST_FULLPATH)
 	docker push $(NHD_LATEST_FULLPATH)

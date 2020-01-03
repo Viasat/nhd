@@ -1,4 +1,5 @@
-FROM ubuntu:18.04
+ARG OS_FULLPATH
+FROM $OS_FULLPATH
 
 RUN apt update && apt-get install -y --no-install-recommends \
         dnsutils \
