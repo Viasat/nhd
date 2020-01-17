@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nhd-service
+spec:
+  type: NodePort
+  selector:
+    app: nhd-scheduler
+  ports:
+  - port: 45655
+    targetPort: 45655
+    name: grpc
+    nodePort: 31044
