@@ -375,6 +375,10 @@ class K8SMgr:
             ann = ret.metadata.annotations     
             return ann['sigproc.viasat.io/cfg_type']   
         except KeyError as e:
+            self.logger.error('Key error when fetching namespaced pod')
+            return ''
+        except ApiException as e:
+            self.logger.error(f'API exception when fetching namespaced pod: {ns}.{pod}')
             return ''
 
     def GetTimeNow(self) -> str:

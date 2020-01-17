@@ -4,9 +4,10 @@ import os
 import threading
 from colorlog import ColoredFormatter
 import pkg_resources
+import sys
 from nhd.NHDCommon import NHDCommon
 from nhd.NHDScheduler import NHDScheduler
-#from nhd.NHDRpcServer import NHDRpcServer
+from nhd.NHDRpcServer import NHDRpcServer
 from queue import Queue
 
 
@@ -17,7 +18,7 @@ if __name__ == "__main__":
 
     try:
         threads.append(NHDScheduler(q))
-        #threads.append(NHDRpcServer(q))
+        threads.append(NHDRpcServer(q))
 
         for t in threads:
             t.start()

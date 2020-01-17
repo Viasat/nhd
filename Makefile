@@ -191,7 +191,7 @@ vpath %.proto $(PROTO_SRC)
 $(OBJ)%_pb2.py \
 $(OBJ)%_pb2_grpc.py : %.proto $(MAKEFILE) 
 		$(ECHO) Processing [$<]
-		$(PROTOC) $(PROTO_INCLUDE) --python_out=. --proto_path=. --grpc_python_out=. $<
+		$(PROTOC) $(PROTO_INCLUDE) --python_out=. -I=. --grpc_python_out=. $<
 
 #**********************************************************************
 # NHD Wheel
