@@ -160,7 +160,7 @@ Since NHD was developed internally at Viasat, there are some things that need to
 More documentation is needed for debugging issues, deploying pods, and determing whether the resource utilization is correct.
 
 ## PCIe Testing
-PCIe topology support is currently being tested and will pushed to master within a couple of weeks.
+PCIe topology will be supported soon. We ran into issues with our test environment, making it difficult to prove this is working as expected on multiple types of topologies.
 
 ## Common config format
 A common configuration format published by the pods as a ConfigMap will leave the application-specific knowledge out of NHD.
