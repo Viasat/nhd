@@ -82,10 +82,10 @@ class NHDRpcHandler(nhd_stats_pb2_grpc.NHDControlServicer):
         rsp = nhd_stats_pb2.SchedulerStats(status = nhd_stats_pb2.NHD_STATUS_ERR)
 
         tmpq = Queue()
-        self.mainq.put((RcpMsgType.TYPE_SCHEDULER_INFO, tmpq))
+        self.mainq.put((RpcMsgType.TYPE_SCHEDULER_INFO, tmpq))
         try:
             item = tmpq.get(True, 5)
-            rsp.status = nhd_status_pb2.NHD_STATUS_OK
+            rsp.status = nhd_stats_pb2.NHD_STATUS_OK
             rsp.failed_schedule_count = item
         except Empty as e:
             self.logger.error(f'Failed to get a response from NHD scheduler for Scheduler stats query: {e}')

@@ -5,7 +5,7 @@ import grpc
 from nhd.proto import nhd_stats_pb2
 from nhd.proto import nhd_stats_pb2_grpc
 
-SERVER_INFO = 'localhost:31044'
+SERVER_INFO = 'fi-gcomp004.nae05.v3gdev.viasat.io:31044'
 
 if __name__ == "__main__":
     print('Starting RPC tests')
@@ -16,3 +16,7 @@ if __name__ == "__main__":
         nodes = stub.GetBasicNodeStats(nhd_stats_pb2.Empty())
         print(nodes)
 
+
+        print('Testing failed pods requests')
+        failed_stats = stub.GetSchedulerStats(nhd_stats_pb2.Empty())
+        print(f'Failed schedules {failed_stats}')

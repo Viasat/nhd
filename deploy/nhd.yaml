@@ -17,7 +17,7 @@ spec:
     spec:
       serviceAccount: nhd-account
       containers:
-      - image: REPLACE_WITH_PUBLIC_REPO
+      - image: artifactory.viasat.com:8151/nhd/nhd:0.1.27
         imagePullPolicy: Always
         name: nhd-main
         resources:
@@ -30,6 +30,6 @@ spec:
             cpu: "2000m"   
             ephemeral-storage: "2Gi"        
       imagePullSecrets:
-      - name: regcred
+      - name: cred-arty-mach3-docker-dev
       restartPolicy: Always  
 
