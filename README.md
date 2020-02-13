@@ -74,8 +74,9 @@ information is stored in the pod specs and configmaps through the Kubernetes API
 any currently-deployed pods.
 
 ### Installing From Source
-You can build the source and container from typing `make` from the top level. Note that this will build the Python wheel, Docker container, and 
-push to a remote register. You will need to change the string `MY_REPO` at the top of the make file to push this locally.
+You can build the source and container from typing `make release` from the top level. Note that this will build the Python wheel, Docker container, and 
+push to a remote register. You will need to change the string `MY_REPO` at the top of the make file to push this locally.  You will need to select
+a base OS image.  Set `OS_FULLPATH` to `ubuntu:18.04` if you don't otherwise have a base OS image preference. 
 
 ### Installing From A Public Repo
 Coming soon.
