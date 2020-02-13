@@ -44,6 +44,7 @@ class NHDScheduler(threading.Thread):
         self.matcher = Matcher()
         self.pod_state = {}
         self.mainq = q
+        self.failed_schedule_count = 0
 
         self.ver = pkg_resources.get_distribution("nhd").version
         self.logger.warning(f'NHD version {self.ver}')
@@ -249,6 +250,7 @@ class NHDScheduler(threading.Thread):
         nodename = match[0]
 
         if nodename == None:
+            self.failed_schedule_count += 1
             self.k8s.GeneratePodEvent(podname, ns, 'FailedScheduling', K8SEventType.EVENT_TYPE_WARNING, \
                     f'No valid candidate nodes found for scheduling pod {podname}')
             return False
@@ -348,6 +350,9 @@ class NHDScheduler(threading.Thread):
 
         if msgid == RpcMsgType.TYPE_NODE_INFO:
             rsp = self.GetBasicNodeStats()
+            q.put(rsp)
+        elif msgid == RpcMsgType.TYPE_SCHEDULER_INFO:
+            rsp = self.failed_schedule_count
             q.put(rsp)
 
     def run(self):

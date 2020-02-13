@@ -38,3 +38,4 @@ class NHDCommon:
 
 class RpcMsgType(Enum):
     TYPE_NODE_INFO = 1     
+    TYPE_SCHEDULER_INFO = 2
