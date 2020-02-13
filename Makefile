@@ -67,8 +67,8 @@ TMP             = $(MAKEROOT)tmp/
 
 # Source/include directories and setup main target
 MAKEFILE         = $(MAKEROOT)Makefile
-NHD_SRC         = $(MAKEROOT)nhd/ 
-PROTO_SRC        = $(MAKEROOT)proto/
+NHD_SRC         = $(MAKEROOT)nhd/
+PROTO_SRC        = $(NHD_SRC)proto/
 NHD_WHEEL       = dist/NHD-$(NHD_VERSION).tar.gz
 TARGET           = $(NHD_WHEEL)
 
@@ -191,7 +191,7 @@ vpath %.proto $(PROTO_SRC)
 $(OBJ)%_pb2.py \
 $(OBJ)%_pb2_grpc.py : %.proto $(MAKEFILE) 
 		$(ECHO) Processing [$<]
-		$(PROTOC) $(PROTO_INCLUDE) --python_out=. -I=. --grpc_python_out=. $<
+		$(PROTOC) --python_out=. -I=. --grpc_python_out=. $<
 
 #**********************************************************************
 # NHD Wheel
