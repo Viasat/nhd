@@ -143,6 +143,14 @@ class K8SMgr:
 
         return False
 
+    def GetPodAnnotations(self, ns, podname):
+        try:
+            p = self.v1.read_namespaced_pod(podname, ns)
+            return p.metadata.annotations
+        except ApiException as e:
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)            
+
+
     def GetScheduledPods(self, sched_name):
         """
         Get all scheduled pods for a given scheduler

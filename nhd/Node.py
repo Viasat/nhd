@@ -101,7 +101,7 @@ class Node:
         self.numa_nodes = 0 
         self.smt_enabled = False
         self.cores_per_proc = 0
-        self.pods_scheduled = set()
+        self.pod_info = {}
         self.sriov_en = False
         self.data_vlan = 0
         self.gwip : str = '0.0.0.0/32'
@@ -125,7 +125,7 @@ class Node:
 
         self.mem.free_hugepages_gb = self.mem.ttl_hugepages_gb
 
-        self.pods_scheduled.clear()
+        self.pod_info.clear()
 
     def GetTotalHugepages(self):
         """ Gets the total hugepages for a node """
@@ -159,19 +159,24 @@ class Node:
 
     def GetTotalPods(self):
         """ Gets the total pods scheduled on the node """
-        return len(self.pods_scheduled)
+        return len(self.pod_info)
 
     def PodPresent(self, pod, ns):
         """ Finds if a pod is present on the node """
-        return (pod, ns) in self.pods_scheduled
+        return (pod, ns) in self.pod_info
 
-    def AddScheduledPod(self, pod, ns):
+    def AddScheduledPod(self, pod, ns, top):
         """ Add a scheduled pod to the node """
-        self.pods_scheduled.add((pod,ns))
+        self.logger.info(f'Adding pod {(pod,ns)} to node {self.name}')
+        self.pod_info[(pod,ns)] = top
     
     def RemoveScheduledPod(self, pod, ns):
         """ Remove a scheduled pod from the node """
-        self.pods_scheduled.remove((pod,ns))
+        self.logger.info(f'Removing pod {(pod,ns)} from node {self.name}')
+        try: 
+            del self.pod_info[(pod,ns)]
+        except KeyError as e:
+            self.logger.error(f'Couldn\'t find pod {(pod,ns)} in pod list!')
 
     def GetGPU(self, di):
         """ Gets a GPU by device ID """

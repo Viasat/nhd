@@ -137,7 +137,7 @@ class NHDScheduler(threading.Thread):
             if not self.nodes[n].SetHugepages(alloc, free):
                 self.logger.error(f'Error while parsing allocatable resources for node {n}')
 
-            self.nodes[n].AddScheduledPod(podname, ns)
+            self.nodes[n].AddScheduledPod(podname, ns, top)
 
     def ResetResources(self):
         """ Resets all known resources to those that have already been deployed. Useful when deployed resources
@@ -250,9 +250,9 @@ class NHDScheduler(threading.Thread):
         nodename = match[0]
 
         if nodename == None:
-            self.failed_schedule_count += 1
             self.k8s.GeneratePodEvent(podname, ns, 'FailedScheduling', K8SEventType.EVENT_TYPE_WARNING, \
                     f'No valid candidate nodes found for scheduling pod {podname}')
+            self.failed_schedule_count += 1
             return False
 
         self.k8s.GeneratePodEvent(podname, ns, 'Scheduling', K8SEventType.EVENT_TYPE_NORMAL, \
@@ -315,7 +315,7 @@ class NHDScheduler(threading.Thread):
             self.k8s.GeneratePodEvent(podname, ns, 'Scheduled', K8SEventType.EVENT_TYPE_NORMAL, \
                     f'Successfully assigned {ns}/{podname} to {nodename}')
 
-        self.nodes[nodename].AddScheduledPod(podname, ns)
+        self.nodes[nodename].AddScheduledPod(podname, ns, top)
 
         return True
 
@@ -341,12 +341,35 @@ class NHDScheduler(threading.Thread):
 
         return nodes
 
+    def GetPodStats(self):
+        """
+        Returns statistics about all pods running
+        """
+        pinfo = []
+        for k,v in self.nodes.items():
+            self.logger.info(f'Processing node {k} with {len(v.pod_info)} pods')
+            for pname,pval in v.pod_info.items():
+                tmp = {
+                     'namespace':   pname[1],
+                     'podname':     pname[0],
+                     'node':        k,
+                     'annotations': self.k8s.GetPodAnnotations(pname[1], pname[0]),
+                     'hugepages':   pval.hugepages_gb,
+                     'proc_cores':  [pc.core for pg in pval.proc_groups for pc in pg.proc_cores],
+                     'proc_helper_cores':  [pc.core for pg in pval.proc_groups for pc in pg.misc_cores],
+                     'misc_cores':  [pc.core for pc in pval.misc_cores],
+                     'gpus':        [g.device_id for pg in pval.proc_groups for g in pg.group_gpus],
+                     'nics':        [np.mac for np in pval.nic_core_pairing],
+                }
+                pinfo.append(tmp)
+        return pinfo
+
     def ParseRPCReq(self, msgid: RpcMsgType, q: Queue):
         """
         Parse an incoming gRPC message request by fetching the data from our Node objects, and
         putting the results into a queue for the RPC thread.
         """
-        self.logger.info(f'Got RPC message id: {msgid}')
+        self.logger.info(f'Got RPC msg id: {msgid}')
 
         if msgid == RpcMsgType.TYPE_NODE_INFO:
             rsp = self.GetBasicNodeStats()
@@ -355,6 +378,9 @@ class NHDScheduler(threading.Thread):
             rsp = self.failed_schedule_count
             self.failed_schedule_count = 0
             q.put(rsp)
+        elif msgid == RpcMsgType.TYPE_POD_INFO:
+            rsp = self.GetPodStats()
+            q.put(rsp)            
 
     def run(self):
         """ 

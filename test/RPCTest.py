@@ -20,3 +20,7 @@ if __name__ == "__main__":
         print('Testing failed pods requests')
         failed_stats = stub.GetSchedulerStats(nhd_stats_pb2.Empty())
         print(f'Failed schedules {failed_stats}')
+
+        print('Testing pod stats')
+        pod_stats = stub.GetPodStats(nhd_stats_pb2.Empty())
+        print(f'Pod stats {pod_stats}')

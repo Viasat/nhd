@@ -38,7 +38,38 @@ message SchedulerStats {
     uint32 failed_schedule_count = 2;
 }
 
+message PodInfo {
+    string name = 1;
+    string node = 2;
+    map<string, string> annotations = 3;
+    string namespace = 4;
+    repeated uint32 misc_cores = 5;
+    repeated uint32 proc_cores = 6;
+    repeated uint32 proc_helper_cores = 7;
+    repeated uint32 gpus = 8;
+    repeated string nic_macs = 9;
+    uint32 hugepages = 10;
+}
+
+message PodStats {
+    NHDStatus status = 1;
+    repeated PodInfo info = 2;
+}
+
+message NodeReq {
+    string name = 1;
+}
+
+
+message DetailedNodeStats {
+    NHDStatus status = 1;
+    string name = 2;
+    repeated PodInfo podinfo = 3;
+}
+
 service NHDControl {
     rpc GetBasicNodeStats (Empty) returns (NodeStats) {}
     rpc GetSchedulerStats (Empty) returns (SchedulerStats) {}
+    rpc GetPodStats(Empty) returns (PodStats) {}
+    rpc GetDetailedNodeStats(NodeReq) returns (DetailedNodeStats) {}
 }
