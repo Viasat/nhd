@@ -91,6 +91,19 @@ class TriadCfgParser(CfgParser):
         
         return True
 
+    def ParseHugePages(self):
+        """
+        Parse the hugepage information from the config
+        """
+        if 'Hugepages_GB' not in self.cfg:
+            self.logger.error('Couldn\'t find hugepage information in config!')
+            return False
+
+        self.logger.info(f'Setting hugepages (GB) to {self.cfg.Hugepages_GB}')
+        self.top.hugepages_gb = int(self.cfg.Hugepages_GB)
+
+        return True
+
     def ParseMiscCores(self):
         """ 
         Sets up the miscellaneous cores for management and control tasks 
@@ -353,6 +366,10 @@ class TriadCfgParser(CfgParser):
             return None
         else:
             self.logger.info(f'Finished parsing config file, and found {len(self.top.proc_groups)} processing groups')
+
+        if not self.ParseHugePages():
+            self.logger.fatal('Could not parse hugepage information from config!')
+            return None
 
         # Note that the network config is not strictly necessary when scheduling a pod. It's only used when reading
         # configs in from pods that have been deployed to load their resources.

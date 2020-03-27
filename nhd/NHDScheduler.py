@@ -133,9 +133,9 @@ class NHDScheduler(threading.Thread):
             self.logger.info(f'Taking node resources from {n}')
             self.nodes[n].RemoveResourcesFromTopology(top)
 
-            (alloc, free) = self.k8s.GetNodeHugepageResources(n) 
-            if not self.nodes[n].SetHugepages(alloc, free):
-                self.logger.error(f'Error while parsing allocatable resources for node {n}')
+            # (alloc, free) = self.k8s.GetNodeHugepageResources(n) 
+            # if not self.nodes[n].SetHugepages(alloc, free):
+            #     self.logger.error(f'Error while parsing allocatable resources for node {n}')
 
             self.nodes[n].AddScheduledPod(podname, ns, top)
 
@@ -241,10 +241,10 @@ class NHDScheduler(threading.Thread):
                     f'Error while processing config for pod {podname}')
             return False
 
-        # Some of the resource requirements are posted as part of a pod's spec and not the application config. 
-        # Pull those into the topology config here
-        pod_res = self.ParsePodResources(podname, ns)
-        top.AddPodReservations(pod_res)
+        # # Some of the resource requirements are posted as part of a pod's spec and not the application config. 
+        # # Pull those into the topology config here
+        # pod_res = self.ParsePodResources(podname, ns)
+        # top.AddPodReservations(pod_res)
 
         match = self.matcher.FindNode(self.nodes, top)
         nodename = match[0]

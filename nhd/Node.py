@@ -32,7 +32,7 @@ class NodeCore:
 Properties of a NIC inside of a node
 """
 class NodeNic:
-    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, vfs: 0):
+    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, vfs: 0, pf = 'PF'):
         self.ifname = ifname
         self.vendor = vendor
         self.speed = speed
@@ -40,6 +40,7 @@ class NodeNic:
         self.speed_used = [0,0] # (rx, tx) set by scheduler
         self.pods_used = 0
         self.num_vfs = vfs
+        self.pf = pf
 
         # The MAC is in a weird format from NFD, so fix it here
         self.mac    = self.FormatMac(mac)
@@ -307,29 +308,19 @@ class Node:
         # First check if SR-IOV is enabled. If so, we do not schedule this node using MAC addresses:
 
         # Fix SR-IOV support with new device plugin
-        # for l,v in labels.items():
-        #     if ENABLE_SRIOV and ('feature.node.kubernetes.io/nfd-extras-sriov' in l):
-        #         self.sriov_en = True
-        #         p = l.split('.')
-        #         (speed, ifname, vfs) = (p[4], p[5], int(p[6]))
+        for l,v in labels.items():
+            if ENABLE_SRIOV and ('feature.node.kubernetes.io/nfd-extras-sriov' in l):
+                self.sriov_en = True
+                p = l.split('.')
+                (speed, ifname, vfs) = (p[4], p[5], int(p[6]))
 
-        #         # Skip redundant interface for now...
-        #         if 'f1' in ifname:
-        #             continue                
+                # Skip redundant interface for now...
+                if 'f1' in ifname:
+                    continue                
 
-        #         if 'Mbs' in speed:
-        #             speed = int(speed[:speed.index('Mbs')])
-        #         else:
-        #             self.logger.info(f'Not adding NIC {ifname} since speed is 0. Interface may be down')
-        #             continue
-
-        #         if speed < SCHEDULABLE_NIC_SPEED_THRESH_MBPS:
-        #             self.logger.info(f'NIC {ifname} has speed lower than required ({speed} found, '
-        #                             f'{SCHEDULABLE_NIC_SPEED_THRESH_MBPS} required. Excluding from schedulable list')
-        #             continue
-
-        #         self.nics.append(NodeNic(ifname, 'SR-IOV', 'None', speed/1e3, -1, vfs))
-        #         self.logger.info(f'Added SR-IOV NIC with name={ifname}, speed={speed}Mbps, VFs={vfs} to node {self.name}')
+                # Set the speed to 0 so it's not scheduled o nthe PF
+                self.nics.append(NodeNic(ifname, 'SR-IOV', 'None', 0, -1, vfs))
+                self.logger.info(f'Added SR-IOV PF with name={ifname}, speed={speed}, VFs={vfs} to node {self.name}')
 
         for l,v in labels.items():
             if 'feature.node.kubernetes.io/nfd-extras-nic' in l:
@@ -352,17 +343,21 @@ class Node:
                                     f'{SCHEDULABLE_NIC_SPEED_THRESH_MBPS} required. Excluding from schedulable list')
                     continue
 
-                # If we detected this system is using SR-IOV, only update the existing entry
+                # If we detected this system is using SR-IOV, only update the existing entry. Right now we don't allow a heterogenous mix of
+                # SR-IOV/non-SR-IOV NICs
                 if self.sriov_en:
                     nic = self.GetNICFromIfName(ifname)
-                    if nic == None:
-                        self.logger.error(f'Found NIC {ifname} with SR-IOV enabled on node, but NIC doesn\'t appear to have it enabled. Skipping NIC...')
+                    if nic != None:
+                        self.logger.error(f'NIC {ifname} is the PF for the device in SR-IOV mode. Skipping...')
                         continue
-                    
-                    nic.numa_node = numa_node
-                    nic.mac = nic.FormatMac(mac)
 
-                    self.logger.info(f'Updated SR-IOV NIC with name={ifname}, vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node} to node {self.name}')
+                    pfname = Node.GetPFFromVF(ifname)
+                    if pfname == '':
+                        self.logger.error(f'Could not find PF for VF {ifname}')
+                        continue
+
+                    self.logger.info(f'Updated SR-IOV NIC with VF={ifname}/PF={pfname}, vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node} to node {self.name}')
+                    self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, 0, pfname))
 
                 else:
                     self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, 0))
@@ -377,6 +372,15 @@ class Node:
                 nidx[n.numa_node] += 1
 
         return True
+
+    @staticmethod
+    def GetPFFromVF(vf):
+        pos = vf.find('s0f')
+        if  pos == -1:
+            return ''
+
+        pfname = vf[:pos+3] + '0' # Chop off the VF of the predictable interface name
+        return pfname
 
     def InitGpus(self, labels):
         self.logger.info(f'Initializing GPUs for node {self.name}')

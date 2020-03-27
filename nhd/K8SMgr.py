@@ -392,7 +392,7 @@ class K8SMgr:
             self.logger.error('Key error when fetching namespaced pod')
             return ''
         except ApiException as e:
-            self.logger.error(f'API exception when fetching namespaced pod: {ns}.{pod}')
+            self.logger.error(f'API exception when fetching namespaced pod: {ns}.{pod}: {e}')
             return ''
 
     def GetTimeNow(self) -> str:
