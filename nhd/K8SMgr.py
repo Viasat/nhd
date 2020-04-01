@@ -125,6 +125,13 @@ class K8SMgr:
         
         return ret.spec.node_name
 
+    def GetPodObj(self, pod, ns):
+        try: 
+            pobj = self.v1.read_namespaced_pod(pod, ns)
+            return pobj
+        except ApiException as e:
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)            
+
     def IsNHDTainted(self, node):
         """
         Find out if the node is tainted for NHD. Only tainted nodes will be used by NHD for scheduling, and also
@@ -154,7 +161,9 @@ class K8SMgr:
             p = self.v1.read_namespaced_pod(podname, ns)
             return p.metadata.annotations
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)            
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)     
+
+        return None       
 
 
     def GetScheduledPods(self, sched_name):
@@ -402,7 +411,7 @@ class K8SMgr:
     def GetRandomUid(self) -> str:
         return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
 
-    def GeneratePodEvent(self, podname, ns, reason, _type, message):
+    def GeneratePodEvent(self, podobj, podname, ns, reason, _type, message):
         """ Generates a pod event on the kubernetes API server """
         try:
             meta  = client.V1ObjectMeta()
@@ -413,8 +422,11 @@ class K8SMgr:
             invobj.name = podname
             invobj.kind = "Pod"
             invobj.namespace = ns
-            #invobj.uid = ruid
+            invobj.api_version = 'v1'
+            invobj.uid = podobj.metadata.uid
 
+            evtsrc = client.V1EventSource()
+            evtsrc.component = 'NHD Scheduler'
 
             if _type == K8SEventType.EVENT_TYPE_NORMAL:
                 etype = "Normal"
@@ -428,7 +440,15 @@ class K8SMgr:
 
             # Log an event in our pod too instead of duplicating externally
             lg(f'Event for pod {ns}/{podname} -- Reason={reason}, message={message}')
-            event = client.V1Event(involved_object=invobj, metadata=meta, reason=reason, message=f'NHD: {message}', count=1, type=etype, first_timestamp=timestamp, last_timestamp=timestamp)
+            event = client.V1Event( involved_object=invobj, 
+                                    source = evtsrc, 
+                                    metadata=meta, 
+                                    reason=reason, 
+                                    message=f'NHD: {message}', 
+                                    count=1, 
+                                    type=etype, 
+                                    first_timestamp=timestamp, 
+                                    last_timestamp=timestamp)
 
             self.v1.create_namespaced_event(namespace=ns, body=event)
 

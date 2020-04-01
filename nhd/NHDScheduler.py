@@ -228,7 +228,13 @@ class NHDScheduler(threading.Thread):
         Attempt to schedule a pod to a node. This is the main entry point for the scheduler, and is kicked off
         whenever a new pod appears in the cluster that wants to use this scheduler. 
         """
-        self.k8s.GeneratePodEvent(podname, ns, 'StartedScheduling', K8SEventType.EVENT_TYPE_NORMAL, \
+        # Get pod data from Kubernetes to populate event fields properly
+        pobj = self.k8s.GetPodObj(podname, ns)
+        if (pobj == None):
+            self.logger.error(f"Could not get pod object for pod {ns}.{podname}")
+            return False
+
+        self.k8s.GeneratePodEvent(pobj, podname, ns, 'StartedScheduling', K8SEventType.EVENT_TYPE_NORMAL, \
                 f'Started scheduling {ns}/{podname}')
 
         cmname, cfgstr = self.k8s.GetCfgMap(podname, ns)  
@@ -237,7 +243,7 @@ class NHDScheduler(threading.Thread):
 
         top = tcfg.CfgToTopology(False)
         if top is None:
-            self.k8s.GeneratePodEvent(podname, ns, 'FailedCfgParse', K8SEventType.EVENT_TYPE_WARNING, \
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'FailedCfgParse', K8SEventType.EVENT_TYPE_WARNING, \
                     f'Error while processing config for pod {podname}')
             return False
 
@@ -250,12 +256,12 @@ class NHDScheduler(threading.Thread):
         nodename = match[0]
 
         if nodename == None:
-            self.k8s.GeneratePodEvent(podname, ns, 'FailedScheduling', K8SEventType.EVENT_TYPE_WARNING, \
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'FailedScheduling', K8SEventType.EVENT_TYPE_WARNING, \
                     f'No valid candidate nodes found for scheduling pod {podname}')
             self.failed_schedule_count += 1
             return False
 
-        self.k8s.GeneratePodEvent(podname, ns, 'Scheduling', K8SEventType.EVENT_TYPE_NORMAL, \
+        self.k8s.GeneratePodEvent(pobj, podname, ns, 'Scheduling', K8SEventType.EVENT_TYPE_NORMAL, \
                 f'Node {nodename} selected for scheduling')
 
         try:
@@ -296,23 +302,23 @@ class NHDScheduler(threading.Thread):
 
         # Now patch the pod's configmap with the new one
         if not self.k8s.ReplaceConfigMap(ns, cmname, topstr):
-            self.k8s.GeneratePodEvent(podname, ns, 'CfgMapFailed', K8SEventType.EVENT_TYPE_WARNING, \
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'CfgMapFailed', K8SEventType.EVENT_TYPE_WARNING, \
                     f'Failed to replace ConfigMap. Unwinding changes')
             self.ReleasePodResources(podname, ns)
             return False
         else:
-            self.k8s.GeneratePodEvent(podname, ns, 'CfgMapSuccess', K8SEventType.EVENT_TYPE_NORMAL, \
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'CfgMapSuccess', K8SEventType.EVENT_TYPE_NORMAL, \
                     f'Successfully replaced ConfigMap contents. Binding pod to node')
 
         if not self.k8s.BindPodToNode(podname, nodename, ns):
             self.logger.info('Failed to bind pod to node. Unwinding...')
-            self.k8s.GeneratePodEvent(podname, ns, 'FailedScheduling', K8SEventType.EVENT_TYPE_WARNING, \
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'FailedScheduling', K8SEventType.EVENT_TYPE_WARNING, \
                     f'Failed to schedule {ns}/{podname} to {nodename}')
             self.ReleasePodResources(podname, ns)
             return False
         else:
             self.logger.warning(f'Successfully bound pod {podname} to node {nodename}!')
-            self.k8s.GeneratePodEvent(podname, ns, 'Scheduled', K8SEventType.EVENT_TYPE_NORMAL, \
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'Scheduled', K8SEventType.EVENT_TYPE_NORMAL, \
                     f'Successfully assigned {ns}/{podname} to {nodename}')
 
         self.nodes[nodename].AddScheduledPod(podname, ns, top)
