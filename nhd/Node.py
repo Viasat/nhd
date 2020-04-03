@@ -256,11 +256,11 @@ class Node:
 
     def InitCores(self, labels):
         """ Initialize the CPU resouces based on the node labels """
-        if not ('feature.node.kubernetes.io/nfd-extras-cpu.num_cores' in labels and 'feature.node.kubernetes.io/nfd-extras-cpu.num_sockets' in labels):
+        if not ('feature.node.kubernetes.io/nfd-extras-cpu.num_cores' in labels and 'feature.node.kubernetes.io/nfd-extras-cpu.numSockets' in labels):
             self.logger.error('Couldn\'t find node CPU labels. Ignoring node')
             return False
 
-        self.sockets        = int(labels['feature.node.kubernetes.io/nfd-extras-cpu.num_sockets'])
+        self.sockets        = int(labels['feature.node.kubernetes.io/nfd-extras-cpu.numSockets'])
         cores               = int(labels['feature.node.kubernetes.io/nfd-extras-cpu.num_cores'])
         self.smt_enabled    = 'feature.node.kubernetes.io/cpu-hardware_multithreading' in labels
         self.numa_nodes     = self.sockets # Fix this if we move to something other than Intel with more NUMA nodes than sockets (AMD)

@@ -17,7 +17,7 @@ spec:
     spec:
       serviceAccount: nhd-account
       containers:
-      - image: artifactory.viasat.com:8151/nhd/nhd:0.1.27
+      - image: artifactory.viasat.com:8151/nhd/nhd:latest
         imagePullPolicy: Always
         name: nhd-main
         resources:
