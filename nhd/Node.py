@@ -12,7 +12,6 @@ from itertools import chain
 
 NIC_BW_AVAIL_PERCENT                = 0.9 # Only allow NICs to be scheduled up to this much of their total capacity
 SCHEDULABLE_NIC_SPEED_THRESH_MBPS   = 11000 # Don't include NICs for scheduling that are below this speed
-ENABLE_SRIOV                        = False # Allow SR-IOV sharing
 ENABLE_SHARING                      = False # Allow pods to share a NIC
 
 """
@@ -32,15 +31,16 @@ class NodeCore:
 Properties of a NIC inside of a node
 """
 class NodeNic:
-    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, vfs: 0, pf = 'PF'):
+    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int):
         self.ifname = ifname
         self.vendor = vendor
         self.speed = speed
         self.numa_node = numa_node
         self.speed_used = [0,0] # (rx, tx) set by scheduler
         self.pods_used = 0
-        self.num_vfs = vfs
-        self.pf = pf
+        self.pciesw = pciesw
+        self.card = card
+        self.port = port
 
         # The MAC is in a weird format from NFD, so fix it here
         self.mac    = self.FormatMac(mac)
@@ -103,7 +103,6 @@ class Node:
         self.smt_enabled = False
         self.cores_per_proc = 0
         self.pod_info = {}
-        self.sriov_en = False
         self.data_vlan = 0
         self.gwip : str = '0.0.0.0/32'
         self.mem: NodeMemory = NodeMemory()
@@ -232,14 +231,10 @@ class Node:
         ninfo = [[] for _ in range(self.numa_nodes)]
 
         for n in self.nics:
-            if ENABLE_SRIOV and n.pods_used == n.num_vfs:
-                # If we've used the maximum VFs for this NIC, don't allow any more scheduling
-                ninfo[n.numa_node].append([0,0])
+            if ENABLE_SHARING:
+                ninfo[n.numa_node].append([n.speed*NIC_BW_AVAIL_PERCENT - n.speed_used[x] for x in range(2)])
             else:
-                if ENABLE_SHARING:
-                    ninfo[n.numa_node].append([n.speed*NIC_BW_AVAIL_PERCENT - n.speed_used[x] for x in range(2)])
-                else:
-                    ninfo[n.numa_node].append([0 if (n.pods_used > 0) else n.speed*NIC_BW_AVAIL_PERCENT for x in range(2)])
+                ninfo[n.numa_node].append([0 if (n.pods_used > 0) else n.speed*NIC_BW_AVAIL_PERCENT for x in range(2)])
 
         return ninfo
 
@@ -305,31 +300,23 @@ class Node:
 
     def InitNics(self, labels):
         self.logger.info(f'Initializing NICs for node {self.name}')
-        # First check if SR-IOV is enabled. If so, we do not schedule this node using MAC addresses:
-
-        # Fix SR-IOV support with new device plugin
+        pfs = []
+        # Build list of any PFs
         for l,v in labels.items():
-            if ENABLE_SRIOV and ('feature.node.kubernetes.io/nfd-extras-sriov' in l):
-                self.sriov_en = True
+            if 'feature.node.kubernetes.io/nfd-extras-sriov' in l:
                 p = l.split('.')
-                (speed, ifname, vfs) = (p[4], p[5], int(p[6]))
+                pfs.append(p[5])
 
-                # Skip redundant interface for now...
-                if 'f1' in ifname:
-                    continue                
-
-                # Set the speed to 0 so it's not scheduled o nthe PF
-                self.nics.append(NodeNic(ifname, 'SR-IOV', 'None', 0, -1, vfs))
-                self.logger.info(f'Added SR-IOV PF with name={ifname}, speed={speed}, VFs={vfs} to node {self.name}')
+        if len(pfs):
+            self.logger.info(f'SR-IOV enabled on NICs: {pfs}')
 
         for l,v in labels.items():
             if 'feature.node.kubernetes.io/nfd-extras-nic' in l:
                 p = l.split('.')
 
-                (ifname, vendor, mac, speed, numa_node) = (p[4], p[5], p[6], p[7], int(p[8]))
+                (ifname, vendor, mac, speed, numa_node, pciesw, card, port) = (p[4], p[5], p[6], p[7], int(p[8]), int(p[9],16), int(p[10],16), int(p[11]))
 
-                # Skip redundant interface for now...
-                if 'f1' in ifname:
+                if ifname in pfs:
                     continue
 
                 if 'Mbs' in speed:
@@ -343,25 +330,9 @@ class Node:
                                     f'{SCHEDULABLE_NIC_SPEED_THRESH_MBPS} required. Excluding from schedulable list')
                     continue
 
-                # If we detected this system is using SR-IOV, only update the existing entry. Right now we don't allow a heterogenous mix of
-                # SR-IOV/non-SR-IOV NICs
-                if self.sriov_en:
-                    nic = self.GetNICFromIfName(ifname)
-                    if nic != None:
-                        self.logger.error(f'NIC {ifname} is the PF for the device in SR-IOV mode. Skipping...')
-                        continue
-
-                    pfname = Node.GetPFFromVF(ifname)
-                    if pfname == '':
-                        self.logger.error(f'Could not find PF for VF {ifname}')
-                        continue
-
-                    self.logger.info(f'Updated SR-IOV NIC with VF={ifname}/PF={pfname}, vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node} to node {self.name}')
-                    self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, 0, pfname))
-
-                else:
-                    self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, 0))
-                    self.logger.info(f'Added NIC with name={ifname}, vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node} to node {self.name}')
+                self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, pciesw, card, port))
+                self.logger.info(f'Updated NIC with ifname={ifname} vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node}, '\
+                                    f'PCIe switch={pciesw}, card={card}, port={port} to node {self.name}')
 
         # Set all the node indices
         if len(self.nics):
@@ -372,15 +343,6 @@ class Node:
                 nidx[n.numa_node] += 1
 
         return True
-
-    @staticmethod
-    def GetPFFromVF(vf):
-        pos = vf.find('s0f')
-        if  pos == -1:
-            return ''
-
-        pfname = vf[:pos+3] + '0' # Chop off the VF of the predictable interface name
-        return pfname
 
     def InitGpus(self, labels):
         self.logger.info(f'Initializing GPUs for node {self.name}')
@@ -518,7 +480,7 @@ class Node:
             self.cores[m.core].used = True
 
         for p in top.nic_core_pairing:
-            nic = self.GetNIC(p.mac) if not self.sriov_en else self.GetNICFromIfName(p.mac)
+            nic = self.GetNIC(p.mac)
             if nic is None:
                 self.logger.error(f'Cannot find NIC {p.mac} on node!')
                 continue
@@ -569,7 +531,7 @@ class Node:
             self.cores[m.core].used = False
 
         for p in top.nic_core_pairing:
-            nic = self.GetNIC(p.mac) if not self.sriov_en else self.GetNICFromIfName(p.mac)
+            nic = self.GetNIC(p.mac)
             if nic is None:
                 self.logger.error(f'Cannot find NIC {p.mac} on node!')
                 continue
@@ -670,10 +632,7 @@ class Node:
                             raise IndexError
                         
                         self.logger.info(f'Adding interface {self.nics[idx].ifname} with mac {self.nics[idx].mac} to core {groupc.core}')
-                        if self.sriov_en: # SR-IOV maps by interface name instead of MAC
-                            ng.AddInterface(self.nics[idx].ifname)
-                        else:
-                            ng.AddInterface(self.nics[idx].mac)
+                        ng.AddInterface(self.nics[idx].mac)
 
                 # Check that we used all the CPU cores
                 if cidx != len(group_cpus):
