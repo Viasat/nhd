@@ -277,25 +277,22 @@ class NHDScheduler(threading.Thread):
         self.nodes[nodename].ClaimPodNICResources(nidx)
 
         nadlist = self.nodes[nodename].GetNADListFromIndices(nidx)
-        if self.nodes[nodename].sriov_en:
-            csnad = ','.join(nadlist)
-        else:
-            # Host-device plugin we want to stick with the same name of the if
-            csnad = ','.join([f'{x}@{x}' for x in nadlist])
+        # Host-device plugin we want to stick with the same name of the if
+        csnad = ','.join([f'{x}@{x}' for x in nadlist])
 
         if not self.k8s.AddNADToPod(podname, ns, csnad):
             self.logger.error('Failed to set NetworkAttachmentDefinition')
             self.ReleasePodResources(podname, ns)
             return False
 
-        if self.nodes[nodename].sriov_en: # The SR-IOV device plugin requires extra resources labeled for the pod
-            unames = set(nadlist)
-            for name in unames:
-                num = nadlist.count(name)
-                if not self.k8s.AddSRIOVDevice(podname, ns, name, num):
-                    self.logger.info('Freeing all resources from failed scheduling')
-                    self.ReleasePodResources(podname, ns)
-                    return False
+        # if self.nodes[nodename].sriov_en: # The SR-IOV device plugin requires extra resources labeled for the pod
+        #     unames = set(nadlist)
+        #     for name in unames:
+        #         num = nadlist.count(name)
+        #         if not self.k8s.AddSRIOVDevice(podname, ns, name, num):
+        #             self.logger.info('Freeing all resources from failed scheduling')
+        #             self.ReleasePodResources(podname, ns)
+        #             return False
 
         # Finally, we map the filled-in topology config back into the appropriate format for the pod
         topstr = tcfg.TopologyToCfg()

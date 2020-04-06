@@ -611,6 +611,7 @@ class Node:
                     # Check if this core is using NIC resources
                     if groupc.nic_dir in (NICCoreDirection.NIC_CORE_DIRECTION_RX, NICCoreDirection.NIC_CORE_DIRECTION_TX):
                         nicmap = mapping['nic'][pi][1]
+                        print(mapping)
                         idx = -1
                         for ni, nic in enumerate(self.nics):
                             if nicmap == nic.idx and nic.numa_node == group_numa_node:

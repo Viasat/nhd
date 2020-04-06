@@ -25,7 +25,7 @@ class Matcher:
 
     def FindNode(self, nl, top) -> str:
         """ Main scheduling matcher function. Attempts to find the best node match based on a list of
-        available nodes, plus the pod's topology configuration. For algorithm details, see GitHub """
+        available nodes, plus the pod's topology configuration. For algorithm details, see README """
 
         self.logger.info(f'Attempting to find node for pod with {len(top.proc_groups)} process groups, '
                         f'{len(top.misc_cores)} misc cores')
@@ -43,7 +43,7 @@ class Matcher:
             
             self.logger.info(f'{len(filts[1])} candidate nodes found after filtering. Intersecting resources...')
             isect = self.IntersectNumaResources(filts)
-            node = self.SelectNode(filts)
+            node = self.SelectNode(filts, top, nl)
             if node == '':
                 self.logger.error('NUMA intersection step left no candidate nodes. Cannot schedule pod!')
                 return (None,)
@@ -258,7 +258,7 @@ class Matcher:
 
 
     def IntersectNumaResources(self, filts):
-        """ At this point we should know all possibly CPU, GPU, and NIC combinations that can be made for a given NUMA node.
+        """ At this point we should know all possible CPU, GPU, and NIC combinations that can be made for a given NUMA node.
             For each processing group, we now have to determine if there is a valid match of all three resource types
             on the same NUMA node. 
 
@@ -322,17 +322,33 @@ class Matcher:
 
         return filts
         
-    def SelectNode(self, filts):
+    def SelectNode(self, filts, top: CfgTopology, nl: Dict[str, Node]):
         """ Selects the node that will be used for scheduling. At this point we've already made sure the node is adequate
             to service each type of resource. There are many ways to select which node we're using, but in general, we want
             to try to pack the pod into a node as tightly as possible, meaning with the fewest leftover resources. Since we
             have many types of resources, there can be competing objectives. """
 
-        # For now, let's just return the first node in the list. Later on we can be smarter.
+        
         if len(filts[1]) == 0:
             self.logger.error('No candidate nodes found!')
             return ''
 
+        # If the pod isn't asking for any GPU resources, try to prefer a non-GPU node first, and only place on a GPU node as
+        # as a last resort.
+        needsGpu = False
+        for p in top.proc_groups:
+            if len(p.group_gpus) > 0:
+                needsGpu = True
+                break
+
+        if not needsGpu:
+            for n in filts[1]:
+                if nl[n].GetTotalGPUs() == 0:
+                    self.logger.info(f'Found node {n} without GPUs to pair with a CPU-only pod')
+                    return n
+        
+        # If we've gotten here, this is a pod that needs GPUs, or a CPU pod where no CPU-only nodes are available. Just return
+        # the first node
         node = filts[1][0]
         return node
 
