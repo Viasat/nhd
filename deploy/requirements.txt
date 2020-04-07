@@ -1,8 +1,8 @@
 kubernetes>=10.0.0
 colorlog>=4.0.2
-grpcio
+grpcio==1.27.2
 libconf>=2.0.0
 magicattr>=0.1.4
 wheel
-grpcio-tools
+grpcio-tools==1.27.2
 
