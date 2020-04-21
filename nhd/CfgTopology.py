@@ -235,7 +235,7 @@ class CfgTopology:
             self.logger.info(f'Using topology map type of NUMA')
         elif t == "PCI":
             self.map_type = TopologyMapType.TOPOLOGY_MAP_PCI
-            self.logger.error(f'Using topology map type of PCI. NOT SUPPORTED YET!!!!!')
+            self.logger.info(f'Using topology map type of PCI')
         else:
             self.logger.error(f'Invalid topology mapping type of {t}')
 

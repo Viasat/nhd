@@ -266,6 +266,9 @@ class NHDScheduler(threading.Thread):
 
         try:
            nic_list = self.nodes[nodename].SetPhysicalIdsFromMapping(match[1], top)
+           if nic_list == None:
+               self.logger.error('Failed to map physical resources from topology config!')
+               return False
         except IndexError:
             # If we end up here, no resources have been mapped and we should not try to finish assigning the pod
             self.logger.error('Failed to map physical resources from topology config!')
@@ -284,15 +287,6 @@ class NHDScheduler(threading.Thread):
             self.logger.error('Failed to set NetworkAttachmentDefinition')
             self.ReleasePodResources(podname, ns)
             return False
-
-        # if self.nodes[nodename].sriov_en: # The SR-IOV device plugin requires extra resources labeled for the pod
-        #     unames = set(nadlist)
-        #     for name in unames:
-        #         num = nadlist.count(name)
-        #         if not self.k8s.AddSRIOVDevice(podname, ns, name, num):
-        #             self.logger.info('Freeing all resources from failed scheduling')
-        #             self.ReleasePodResources(podname, ns)
-        #             return False
 
         # Finally, we map the filled-in topology config back into the appropriate format for the pod
         topstr = tcfg.TopologyToCfg()

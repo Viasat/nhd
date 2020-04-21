@@ -5,10 +5,12 @@ from colorlog import ColoredFormatter
 from nhd.CfgTopology import SMTSetting
 from nhd.CfgTopology import GpuType
 from nhd.CfgTopology import NICCoreDirection
+from nhd.CfgTopology import TopologyMapType
 from nhd.CfgTopology import CfgTopology
 from pprint import pprint
 from typing import Dict, List, Tuple
 from itertools import chain
+from collections import defaultdict
 
 NIC_BW_AVAIL_PERCENT                = 0.9 # Only allow NICs to be scheduled up to this much of their total capacity
 SCHEDULABLE_NIC_SPEED_THRESH_MBPS   = 11000 # Don't include NICs for scheduling that are below this speed
@@ -65,11 +67,12 @@ class NodeMemory:
 Properties of a GPU inside of a node
 """
 class NodeGpu:
-    def __init__(self, gtype: str, device_id: int, numa_node: int):
+    def __init__(self, gtype: str, device_id: int, numa_node: int, pciesw: int):
         self.gtype = self.GetType(gtype)
         self.device_id = device_id
         self.numa_node = numa_node
         self.used = False
+        self.pciesw = pciesw
 
     def GetType(self, gtype: str):
         if '1080Ti' in gtype:
@@ -226,6 +229,24 @@ class Node:
     
         return fl
 
+    def GetFreeGPUPCICount(self):
+        """ Returns list of free GPUs on each PCIe switch """
+        ginfo = defaultdict(lambda: 0)
+        for g in self.gpus:
+            if not g.used:
+                ginfo[g.pciesw] += 1
+
+        return ginfo
+
+    def GetNumaNICPCIResources(self):
+        """ Returns list of PCI switch addresses for each NIC on the node """
+        ninfo = [{} for _ in range(self.numa_nodes)]
+        for n in self.nics:
+            ninfo[n.numa_node][n.idx] = n.pciesw     
+
+        return ninfo      
+                   
+
     def GetFreeNumaNicResources(self) -> List[int]:
         """ Return the amount of free NIC resources per NUMA node """
         ninfo = [[] for _ in range(self.numa_nodes)]
@@ -349,10 +370,10 @@ class Node:
         for l,v in labels.items():
             if 'feature.node.kubernetes.io/nfd-extras-gpu' in l:
                 p = l.split('.')
-                (device_id, gtype, numa_node) = (int(p[4]), p[5], int(p[6]))
+                (device_id, gtype, numa_node, pciesw) = (int(p[4]), p[5], int(p[6]), int(p[7], 16))
 
-                self.gpus.append(NodeGpu(gtype, device_id, numa_node))
-                self.logger.info(f'Added GPU with type={gtype}, device_id={device_id}, numa_node={numa_node} to node {self.name}')
+                self.gpus.append(NodeGpu(gtype, device_id, numa_node, pciesw))
+                self.logger.info(f'Added GPU with type={gtype}, device_id={device_id}, numa_node={numa_node}, pciesw={pciesw} to node {self.name}')
 
         return True
 
@@ -558,6 +579,23 @@ class Node:
         for ni in nidx: # Mark as pod using the interface
             self.nics[ni].pods_used += 1
 
+
+    def GetFreePciGpuFromNic(self, nic):
+        # Search free GPUs
+        for g in self.gpus:
+            if g.pciesw == nic.pciesw and not g.used:
+                self.logger.info(f'Found GPU {g.device_id} matching NIC PCI switch {nic.pciesw}')
+                return g
+
+        return None
+
+    def GetNicObjFromIndex(self, numa_node, nic_idx):
+        for ni, nic in enumerate(self.nics):
+            if nic_idx == nic.idx and nic.numa_node == numa_node:
+                return nic
+        return None     
+
+
     def SetPhysicalIdsFromMapping(self, mapping, top: CfgTopology):
         """ Maps the indices after the mapping function is done into physical node resources based on what's free. Uses
             the previously-defined topology to pull the actual groups out """
@@ -584,9 +622,43 @@ class Node:
                     self.logger.error(f'Asked for {gcpu_req} free CPUs, but only got {len(group_cpus)} back!')
                     raise IndexError
 
+                # Always try to pair up GPUs and NICs on the same PCI switch even if we're not using GPUDirect in this
+                # pod, so that future GPUDirect pods have a higher chance of getting their resources. Build a dict of
+                # all GPUs and NICs on the same switch
+                # if top.map_type == TopologyMapType.TOPOLOGY_MAP_PCI: 
+                #     if len(mapping['nic'][pi]) != len(pv.group_gpus):
+                #         self.logger.error(f'When using PCI mode the number of GPUs and NICs must match for now ({len(mapping["nic"][pi])} != {len(pv.group_gpus)})')
+                #         return None
+
+                nic_gpu_map = []
+                # Grab GPUs and NICs that are on the same switch using the physical NIC index. This will need to be updated when we support one NIC
+                # to multiple GPUs. For now assume there's one NIC per processing group. This will be expanded later if needed.
+                nicinfo = mapping['nic'][pi]
+                nobj    = self.GetNicObjFromIndex(mapping['nic'][pi][0], mapping['nic'][pi][1])
+                if nobj == None:
+                    self.logger.error(f'Couldn\'t find NIC object from index {nicinfo}')
+                    raise IndexError
+
+                freegpus = []
+                for gi in range(len(pv.group_gpus)):
+                    freegpu = self.GetFreePciGpuFromNic(nobj)                    
+                    if freegpu == None:
+                        # If we can't find a free GPU for this NIC, and we're in PCI mode, then something went wrong. We need to bail out.
+                        if top.map_type == TopologyMapType.TOPOLOGY_MAP_PCI: 
+                            self.logger.error(f'Couldn\'t find a free GPU for NIC PCI switch in PCI mode! Bailing out: {nicinfo}')
+                            return None
+                        else:
+                            # Just get the next free GPU we can find since there's not one free on the same PCI switch
+                            gdev = self.GetNextGpuFree(group_numa_node)
+                            freegpus.append(gdev)
+                    else:
+                        freegpus.append(freegpu)
+                                            
+
+
                 # Assign GPU device IDs and CPU cores
-                for gv in pv.group_gpus:
-                    gdev = self.GetNextGpuFree(group_numa_node)
+                for gi, gv in enumerate(pv.group_gpus):
+                    gdev = freegpus[gi]
                     if gdev == None:
                         self.logger.error(f'No free GPUs available on node {self.name} even though mapping found one!')
                         raise IndexError
@@ -603,17 +675,16 @@ class Node:
                         cidx += 1
 
                 # Assign processing cores
-                for groupc in pv.proc_cores:
+                for groupi, groupc in enumerate(pv.proc_cores):
                     groupc.core = group_cpus[cidx]
                     self.cores[groupc.core].used = True
                     cidx += 1
 
                     # Check if this core is using NIC resources
                     if groupc.nic_dir in (NICCoreDirection.NIC_CORE_DIRECTION_RX, NICCoreDirection.NIC_CORE_DIRECTION_TX):
-                        nicmap = mapping['nic'][pi][1]
                         idx = -1
                         for ni, nic in enumerate(self.nics):
-                            if nicmap == nic.idx and nic.numa_node == group_numa_node:
+                            if nic == nobj:
                                 idx = ni
                                 break
 

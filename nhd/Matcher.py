@@ -10,7 +10,7 @@ from nhd.NHDCommon import NHDCommon
 from nhd.CfgTopology import SMTSetting
 from nhd.CfgTopology import TopologyMapType
 from nhd.CfgTopology import CfgTopology
-from typing import Dict
+from typing import Dict, List
 
 
 """
@@ -34,27 +34,32 @@ class Matcher:
         nl = self.FilterPodResources(nl, top)
 
         # After the native resources are filtered, now do all the matching based on what type of map
-        # we're using (NUMA/PCIe).
-        if top.map_type == TopologyMapType.TOPOLOGY_MAP_NUMA:
+        # we're using (NUMA/PCIe). For PCIe matching, it's a superset of NUMA matching. In other words, 
+        # all NUMA requirements must still be met, but also the PCI requirements need to be met. For this
+        # reason we can do the NUMA filtering first, and if there are no candidates after that, we're
+        # done. The first step is filtering, which makes sure that for each of the three types, we find all possible
+        # ways the resources can be placed on a node. After filtering, the intersection step occurs, where for each
+        # of the three resource types and their combinations, we take the intersection of those combinations to figure
+        # out which are valid for all resources types.
+        if top.map_type not in (TopologyMapType.TOPOLOGY_MAP_NUMA, TopologyMapType.TOPOLOGY_MAP_PCI):
+            self.logger.error(f'Invalid mapping type: {top.map_type}')
+            return (None,)
+        else:
             filts = self.FilterNumaTopology(nl, top)
             if filts[1] == None or len(filts[1]) == 0:
                 self.logger.info('No candidate nodes found after filter step!')
                 return (None,)
-            
+
             self.logger.info(f'{len(filts[1])} candidate nodes found after filtering. Intersecting resources...')
-            isect = self.IntersectNumaResources(filts)
+            isect = self.IntersectResources(nl, filts, top.map_type)
+
             node = self.SelectNode(filts, top, nl)
             if node == '':
                 self.logger.error('NUMA intersection step left no candidate nodes. Cannot schedule pod!')
                 return (None,)
                 
             midx = self.GetNumaGroupIdx(node, nl[node].numa_nodes, filts)
-
             return node, midx
-        elif top.map_type == TopologyMapType.TOPOLOGY_MAP_PCI:
-            self.logger.error('PCI topology mapping not supported yet!')
-        else:
-            self.logger.error(f'Unknown topology mapping {top.map_type}!')
         
         
         return None
@@ -74,7 +79,6 @@ class Matcher:
                 filtnodes[k] = v
 
         return filtnodes
-
 
     def FilterNumaTopology(self, nl, top):
         """ Match nodes based on NUMA topology. The only criteria here is that the GPUs, CPUs, and NICs fall
@@ -98,6 +102,8 @@ class Matcher:
 
             # Make a list of all ways the GPUs can be assigned to NUMA nodes
             pr = list(itertools.product(range(v.numa_nodes), repeat=len(req_gpus)))
+
+            # For each NUMA node, add up the total number of GPUs that would be on each node for this combination
             for p in pr: # combination
                 ttl = [0] * v.numa_nodes # Hold the totals for this round to see if it passes
                 for idx,r in enumerate(p): # numa index
@@ -115,6 +121,9 @@ class Matcher:
             else:
                 self.logger.info(f'Node {n} has {len(stmp)} possible GPU combinations to service request of {req_gpus}')
 
+            # stmp contains a tuple of the NUMA node assigned to each processing group. If there's only once processing group, 
+            # and both NUMA nodes have capacity, then stmp would have [(0,), (1,)]. If there were two processing groups and
+            # two NUMA nodes with resources, it would be: [(0, 0), (0, 1), (1, 0), (1, 1)]
             gpu_cands[n] = list(stmp)
     
         if len(cand_nodes) > 0:
@@ -232,7 +241,7 @@ class Matcher:
                     for numaidx,numa in enumerate(numa_combo_idx):
                         c.append(list(nic_combos[numaidx][numa]))
 
-                    ttl_list = [c[np].pop(0) for np in p]
+                    ttl_list = [c[np].pop(0) for np in p]             
 
                     # Now go through each combo and assign throughput to the NICs, and see if it's viable based on current capacity
                     for xi,xv in enumerate(ttl_list):
@@ -254,10 +263,10 @@ class Matcher:
   
         # At this point we're removed any node that doesn't meet one or more of our resource requirements. The next stage is to match
         # the possibilities up with the best node, and the best hardware on that node
-        return (res_cands, cand_nodes)
+        return (res_cands, cand_nodes)   
+     
 
-
-    def IntersectNumaResources(self, filts):
+    def IntersectResources(self, nl: List[Node], filts, map_type: TopologyMapType):
         """ At this point we should know all possible CPU, GPU, and NIC combinations that can be made for a given NUMA node.
             For each processing group, we now have to determine if there is a valid match of all three resource types
             on the same NUMA node. 
@@ -269,14 +278,55 @@ class Matcher:
         cand_list = filts[1].copy()
         self.logger.info(f'Starting intersection with candidate list: {cand_list}')
 
+
+        # If we're intersecting PCI switches, remove those candidates from the NIC list first.
+        if map_type == TopologyMapType.TOPOLOGY_MAP_PCI:
+            for n,v in nl.items():
+                to_remove = []
+                self.logger.info(f'Intersecting PCIe resources on node {n}')
+
+                # First find all the possible NUMA combinations of NIC + GPU that are on the same switch
+                gsw = v.GetFreeGPUPCICount()
+                nsw = v.GetNumaNICPCIResources()
+
+                # For each NUMA node, go through and see how many NICs and GPUs are sharing the same switch that we can allocate. We use the NIC indices here
+                # since we already have a list of filtered physical indices that are candidates
+                for ntup in filts[0]['nic'][n]:
+                    nicswcount = defaultdict(lambda: 0)
+                    for nicopts in ntup: # Listing of all NIC options within this processing group
+                        # Build up a list of all NIC combinations that don't have a matching free NIC on the same PCIe switch
+                        nicswcount[nsw[nicopts[0]][nicopts[1]]] += 1 # Add this switch to NICs that need a match
+                    
+                    # Make sure we have enough GPUs on these switches to 
+                    for ni,nv in nicswcount.items():
+                        if gsw[ni] < nv: # Check if the number of GPUs on this NIC switch is lower than the NICs on it
+                            self.logger.info(f'Total number of GPUs on switch {ni} is less than our NICs on it ({nv}). Removing as option')
+                            to_remove.append(ntup)
+
+                # Now we know all processing group combinations that don't meet our PCI switch requirements. Remove them from the NIC groups
+                if len(to_remove) == 0:
+                    self.logger.info('All NICs have a matching GPU on a PCI switch')
+                    continue
+
+                print(filts[0]['nic'][n])
+                self.logger.info(f'Removing NIC groups {to_remove} since we don\'t have enough GPUs on those switches')
+                for r in to_remove:
+                    if r in filts[0]['nic'][n]:
+                        del filts[0]['nic'][n][filts[0]['nic'][n].index(r)]
+                    else:
+                        self.logger.error(f'Found NIC group {r} from intersection, but couldn\'t find it in master list')
+
         for n in cand_list:
             # For the matching process, we need to go through CPU, GPU, and NIC mappings to find all group mappings that are met for
             # all three types. We use the GPU list as our loop filter, but it doesn't matter.
             to_remove = []
 
+            self.logger.info(f'Beginning NUMA intersection on node {n}')
+
             gpu_tuples = [x for x in filts[0]['gpu'][n]]
             cpu_tuples = [x[:-1] for x in filts[0]['cpu'][n]] # CPU pairs reserve the last element for miscellaneous cores
             nic_tuples = [list(zip(*x))[0] for x in filts[0]['nic'][n]]
+            self.logger.info(f'gpu_tuples={gpu_tuples}, cpu_tuples={cpu_tuples}, nic_tuples={nic_tuples}')
 
             intersect = list(set(gpu_tuples) & set(cpu_tuples) & set(nic_tuples)) # Intersect all tuples so we're left with valid combos
             self.logger.info(f'Set intersection is {intersect}')
@@ -356,6 +406,7 @@ class Matcher:
         """ Find the best group index mapping to maximize later bin packing. For now, the criteria will be to maximize
             the number of GPUs on a particular node. """
 
+        self.logger.info(f'Input to func {filts}')
         def node_delta(x):
             el = [filts[0]['gpu'][node][x].count(y) for y in range(numa_nodes)]
             return max(el) - min(el)
