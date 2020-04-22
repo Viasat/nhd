@@ -131,6 +131,9 @@ NICs are the only shareable resource allowed by NHD. This is done because the in
 
 To schedule NIC resources, the pod gives a hint as to how much bandwidth is needed per CPU core. NHD accumulates all bandwidth requests, and attempts to find one or more interfaces feasible for the request. If a request is feasible, the interface information is annotated in the pod spec.
 
+### Mapping Type
+Currently two mapping types are supported: NUMA and PCI. NUMA mapping attempts to map all CPU cores, GPUs, and NICs in the same processing group onto the same NUMA node. PCI mapping does the same thing, but it also ensures that any GPU and NIC in the same processing group are on the same PCIe switch.
+
 # Debugging
 To debug deployment issues with NHD, most issues can be seen by either looking at Kubernetes events, or the log of NHD. Only major events will be shown in the Kubernetes event log. All NHD events will start with the string "NHD", and can be filtered with grep. For example, to view events in my-namespace:
 
@@ -159,9 +162,6 @@ Since NHD was developed internally at Viasat, there are some things that need to
 
 ## More Documentation!
 More documentation is needed for debugging issues, deploying pods, and determing whether the resource utilization is correct.
-
-## PCIe Testing
-PCIe topology will be supported soon. We ran into issues with our test environment, making it difficult to prove this is working as expected on multiple types of topologies.
 
 ## Common config format
 A common configuration format published by the pods as a ConfigMap will leave the application-specific knowledge out of NHD.
