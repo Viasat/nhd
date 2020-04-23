@@ -318,7 +318,7 @@ class K8SMgr:
                    break
 
             if cm:
-                self.logger.info(f'Found ConfigMap {cm} for pod {pod}')
+                self.logger.info(f'Found base ConfigMap {cm} for pod {pod}')
                 cmdat = self.v1.list_namespaced_config_map(ns)
                 for c in cmdat.items:
                     if c.metadata.name != cm:
@@ -334,9 +334,24 @@ class K8SMgr:
 
         return (None,None)
 
+    def AnnotatePodConfig(self, ns, podname, configstr):
+        """ Annotate the pod's configuration """
+        try:
+            self.v1.patch_namespaced_pod(podname, ns, body= {
+                "metadata": {
+                    "annotations": {
+                        "sigproc.viasat.io/nhd_config": configstr
+                    }
+                }
+            })
+        except ApiException as e:
+            self.logger.error(f'Failed to update pod metadata configuration for {podname} in namespace {ns}')
+            return False        
 
-    def ReplaceConfigMap(self, ns, cmname, cmbody):
-        """ Replaces a ConfigMap object with a new value """
+        return True
+
+    def PatchConfigMap(self, ns, cmname, cmbody):
+        """ Patches a ConfigMap object in place with a new value """
 
         try:
             resp = self.v1.read_namespaced_config_map(name=cmname, namespace=ns)
@@ -352,7 +367,6 @@ class K8SMgr:
                 }
             }
 
-            tmpdict = vars(resp)
             ret = self.v1.patch_namespaced_config_map(name=cmname, namespace=ns, body=tmp_map)
 
         except ApiException as e:
@@ -360,7 +374,58 @@ class K8SMgr:
             return False
 
         return True
-                
+
+    # def GetKeyFromConfigMap(self, ns, cmname):
+    #     """ Returns the name of the first key in a configmap """
+    #     try:
+    #         resp = self.v1.read_namespaced_config_map(name=cmname, namespace=ns)     
+    #         keyname = list(resp.data.keys())[0]
+    #         return keyname   
+    #     except ApiException as e:
+    #         self.logger.error(f'Failed to get keyname from configmap {cmname} in namespace {ns}')
+
+    #     return ''        
+
+    # def CopyConfigMap(self, ns, oldcm, cmbody):
+    #     """ Replaces a ConfigMap object with a new one """
+    #     cmname = "nhd-config" + self.GetRandomUid()
+
+    #     try:
+    #         keyname = self.GetKeyFromConfigMap(ns, oldcm)
+    #         tmp_map = {
+    #             "kind": "ConfigMap",
+    #             "apiVersion": "v1",
+    #             "metadata": {
+    #                 "name": cmname,
+    #             },
+    #             "data": {
+    #                 keyname: cmbody
+    #             }
+    #         }
+
+    #         ret = self.v1.create_namespaced_config_map(body=tmp_map, namespace=ns)
+
+    #     except ApiException as e:
+    #         self.logger.error(f'Failed to create configmap {cmname} in namespace {ns}')
+    #         return False
+
+    #     return cmname
+     
+    # def ReplaceVolumeMountConfigMap(self, podname, ns, oldcm, newcm):
+    #     """ Replaces the configmap object in the volume mount of an old configmap """    
+    #     try:
+    #         ret = self.v1.read_namespaced_pod(podname, ns)
+    #     except ApiException as e:
+    #         self.logger.error(f'API exception when fetching namespaced pod: {ns}.{podname}: {e}')
+    #         return False
+
+    #     for v in ret.spec.volumes:
+    #         if v.config_map is not None:
+    #             if v.config_map.name == oldcm:
+    #                 # We want to replace this configmap object
+                    
+
+                                  
 
     def BindPodToNode(self, podname, node, ns):
         """ Binds a pod to a node to start the deployment process. """

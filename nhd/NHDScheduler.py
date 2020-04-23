@@ -291,15 +291,25 @@ class NHDScheduler(threading.Thread):
         # Finally, we map the filled-in topology config back into the appropriate format for the pod
         topstr = tcfg.TopologyToCfg()
 
-        # Now patch the pod's configmap with the new one
-        if not self.k8s.ReplaceConfigMap(ns, cmname, topstr):
+        # Annotate pod with new configuration
+        if not self.k8s.AnnotatePodConfig(ns, podname, topstr):
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'PodCfgFailed', K8SEventType.EVENT_TYPE_WARNING, \
+                    f'Failed to annotate pod\'s configuration')
+            self.ReleasePodResources(podname, ns)
+            return False
+        else:
+            self.k8s.GeneratePodEvent(pobj, podname, ns, 'PodCfgSuccess', K8SEventType.EVENT_TYPE_NORMAL, \
+                    f'Successfully added pod\'s configuration to annotations')
+
+        # Now patch the pod's configmap with the new one. This is a legacy feature and will be removed once all pods use annotations
+        if not self.k8s.PatchConfigMap(ns, cmname, topstr):
             self.k8s.GeneratePodEvent(pobj, podname, ns, 'CfgMapFailed', K8SEventType.EVENT_TYPE_WARNING, \
-                    f'Failed to replace ConfigMap. Unwinding changes')
+                    f'Failed to patch ConfigMap. Unwinding changes')
             self.ReleasePodResources(podname, ns)
             return False
         else:
             self.k8s.GeneratePodEvent(pobj, podname, ns, 'CfgMapSuccess', K8SEventType.EVENT_TYPE_NORMAL, \
-                    f'Successfully replaced ConfigMap contents. Binding pod to node')
+                    f'Successfully patched ConfigMap contents. Binding pod to node')
 
         if not self.k8s.BindPodToNode(podname, nodename, ns):
             self.logger.info('Failed to bind pod to node. Unwinding...')
