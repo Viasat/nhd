@@ -107,6 +107,7 @@ class Node:
         self.cores_per_proc = 0
         self.pod_info = {}
         self.data_vlan = 0
+        self.group: str = 'default'
         self.gwip : str = '0.0.0.0/32'
         self.mem: NodeMemory = NodeMemory()
         self.reserved_cores = [] # Reserved CPU cores
@@ -268,7 +269,18 @@ class Node:
         def ParseRange(r):
             parts = r.split("-")
             return range(int(parts[0]), int(parts[-1])+1)
-        return sorted(set(chain.from_iterable(map(ParseRange, rl.split(",")))))         
+        return sorted(set(chain.from_iterable(map(ParseRange, rl.split(",")))))    
+
+    def InitGroups(self, labels):
+        """ Initialize the node groups. If a node does not have this label, it's put into the default group """   
+        if not ('NHD_GROUP' in labels):
+            self.logger.warning(f'Couldn\'t find node NHD group in labels for node {self.name}. Using default')
+            self.group = 'default'
+        else:
+            self.group = labels['NHD_GROUP']
+            self.logger.warning(f'NHD group set to {self.group} for node {self.name}')  
+
+        return True    
 
     def InitCores(self, labels):
         """ Initialize the CPU resouces based on the node labels """
@@ -408,6 +420,9 @@ class Node:
         self.addr = addr
 
     def ParseLabels(self, labels):
+        if not self.InitGroups(labels):
+            return False
+
         if not self.InitCores(labels):
             return False
 

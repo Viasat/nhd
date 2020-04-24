@@ -130,7 +130,20 @@ class K8SMgr:
             pobj = self.v1.read_namespaced_pod(pod, ns)
             return pobj
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)            
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)  
+
+    def GetPodNodeGroup(self, pod, ns) -> str:
+        """ Returns the node group name of the pod, or "default" if it doesn't exist. """
+        try:
+            p = self.v1.read_namespaced_pod(pod, ns)
+        except:
+            self.logger.warning(f"Failed to get pod annotations for pod {pod} in namespace {ns}")
+            return "default"
+
+        if 'sigproc.viasat.io/nhd_group' in p.metadata.annotations:
+            group = p.metadata.annotations["sigproc.viasat.io/nhd_group"]
+            self.logger.info(f'Pod is using NHD group {group}') 
+            return str(group)
 
     def IsNHDTainted(self, node):
         """
@@ -142,7 +155,6 @@ class K8SMgr:
             a = self.v1.read_node(name = node)        
             taints = a.spec.taints
             
-
             for t in taints:
                 if t.key == 'sigproc.viasat.io/nhd_scheduler' and t.effect == 'NoSchedule':
                     candidate = True
@@ -161,7 +173,8 @@ class K8SMgr:
             p = self.v1.read_namespaced_pod(podname, ns)
             return p.metadata.annotations
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)     
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)    
+            raise 
 
         return None       
 

@@ -15,6 +15,7 @@ from nhd.TriadCfgParser import TriadCfgParser
 from queue import Queue
 from queue import Empty
 from nhd.NHDCommon import RpcMsgType
+from collections import defaultdict
 
 NHD_SCHED_NAME = "nhd-scheduler"
 
@@ -38,6 +39,7 @@ class NHDScheduler(threading.Thread):
         threading.Thread.__init__(self)
         self.logger = NHDCommon.GetLogger(__name__)
         self.nodes = {}
+        self.node_groups = defaultdict(list)
         self.k8s = K8SMgr.GetInstance()
         self.sched_name = NHD_SCHED_NAME
         self.whitelist = []
@@ -223,6 +225,17 @@ class NHDScheduler(threading.Thread):
         # default
         return TriadCfgParser(cfgstr, False)
 
+    def FilterNodeGroups(self, podname: str, ns: str):
+        """ Each pod requests a node group to be in, or "default" if none is seen. Only schedule pods on nodes matching their node group.
+            This allows users to segment some nodes for different purposes without affecting the main cluster. """
+        ngroup = self.k8s.GetPodNodeGroup(podname, ns)
+        nl = {}
+        for n,v in self.nodes.items():
+            if v.group == ngroup:
+                nl[n] = v
+
+        return nl
+
     def AttemptScheduling(self, podname, ns) -> bool:
         """
         Attempt to schedule a pod to a node. This is the main entry point for the scheduler, and is kicked off
@@ -252,7 +265,11 @@ class NHDScheduler(threading.Thread):
         # pod_res = self.ParsePodResources(podname, ns)
         # top.AddPodReservations(pod_res)
 
-        match = self.matcher.FindNode(self.nodes, top)
+        # Filter out nodes not belonging to the node group requested by this pod
+        filt_nodes = self.FilterNodeGroups(podname, ns)
+        self.logger.info(f"Nodes matching group filter: {filt_nodes}")
+        
+        match = self.matcher.FindNode(filt_nodes, top)
         nodename = match[0]
 
         if nodename == None:
