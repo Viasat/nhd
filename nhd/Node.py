@@ -654,10 +654,9 @@ class Node:
                     self.logger.error(f'Couldn\'t find NIC object from index {nicinfo}')
                     raise IndexError
 
-                freegpus = []
-                for gi in range(len(pv.group_gpus)):
-                    freegpu = self.GetFreePciGpuFromNic(nobj)                    
-                    if freegpu == None:
+                for gi,gv in enumerate(pv.group_gpus):
+                    gdev = self.GetFreePciGpuFromNic(nobj)                    
+                    if gdev == None:
                         # If we can't find a free GPU for this NIC, and we're in PCI mode, then something went wrong. We need to bail out.
                         if top.map_type == TopologyMapType.TOPOLOGY_MAP_PCI: 
                             self.logger.error(f'Couldn\'t find a free GPU for NIC PCI switch in PCI mode! Bailing out: {nicinfo}')
@@ -665,15 +664,7 @@ class Node:
                         else:
                             # Just get the next free GPU we can find since there's not one free on the same PCI switch
                             gdev = self.GetNextGpuFree(group_numa_node)
-                            freegpus.append(gdev)
-                    else:
-                        freegpus.append(freegpu)
                                             
-
-
-                # Assign GPU device IDs and CPU cores
-                for gi, gv in enumerate(pv.group_gpus):
-                    gdev = freegpus[gi]
                     if gdev == None:
                         self.logger.error(f'No free GPUs available on node {self.name} even though mapping found one!')
                         raise IndexError

@@ -112,7 +112,11 @@ class NHDScheduler(threading.Thread):
     def ClaimPodResources(self, podname, ns):
         """ Claims any pod resources from a given pod's configmap. This will remove any physical node resources consumed
             by the pod from being scheduled by other pods. """
-        cmname, cfgstr = self.k8s.GetCfgMap(podname, ns)
+        cfgstr = self.k8s.GetCfgAnnotations(podname, ns)
+        if cfgstr == False:
+            self.logger.error(f'Couldn\'t find pod resources for {ns}.{podname}')
+            return
+
         cfgtype = self.k8s.GetCfgType(podname, ns)
         tcfg = self.GetCfgParser(cfgtype, cfgstr)
 
@@ -168,8 +172,8 @@ class NHDScheduler(threading.Thread):
     def ReleasePodResources(self, podname, ns):
         """ Releases resources consumed by a pod that's completed or errored """
         self.logger.info(f'Releasing resources for pod {ns}.{podname}')
-        cmname, cfgstr = self.k8s.GetCfgMap(podname, ns)
-        if cmname == None:
+        cfgstr = self.k8s.GetCfgAnnotations(podname, ns)
+        if cfgstr == False:
             self.logger.warning(f'Pod {ns}.{podname} not found. Possibly already removed from a previous event, such as an error or a job completing. Triggering re-scan of all pods...')
             self.ResetResources()
             return
@@ -260,11 +264,6 @@ class NHDScheduler(threading.Thread):
                     f'Error while processing config for pod {podname}')
             return False
 
-        # # Some of the resource requirements are posted as part of a pod's spec and not the application config. 
-        # # Pull those into the topology config here
-        # pod_res = self.ParsePodResources(podname, ns)
-        # top.AddPodReservations(pod_res)
-
         # Filter out nodes not belonging to the node group requested by this pod
         filt_nodes = self.FilterNodeGroups(podname, ns)
         self.logger.info(f"Nodes matching group filter: {filt_nodes}")
@@ -317,16 +316,6 @@ class NHDScheduler(threading.Thread):
         else:
             self.k8s.GeneratePodEvent(pobj, podname, ns, 'PodCfgSuccess', K8SEventType.EVENT_TYPE_NORMAL, \
                     f'Successfully added pod\'s configuration to annotations')
-
-        # Now patch the pod's configmap with the new one. This is a legacy feature and will be removed once all pods use annotations
-        if not self.k8s.PatchConfigMap(ns, cmname, topstr):
-            self.k8s.GeneratePodEvent(pobj, podname, ns, 'CfgMapFailed', K8SEventType.EVENT_TYPE_WARNING, \
-                    f'Failed to patch ConfigMap. Unwinding changes')
-            self.ReleasePodResources(podname, ns)
-            return False
-        else:
-            self.k8s.GeneratePodEvent(pobj, podname, ns, 'CfgMapSuccess', K8SEventType.EVENT_TYPE_NORMAL, \
-                    f'Successfully patched ConfigMap contents. Binding pod to node')
 
         if not self.k8s.BindPodToNode(podname, nodename, ns):
             self.logger.info('Failed to bind pod to node. Unwinding...')
