@@ -362,11 +362,16 @@ class NHDScheduler(threading.Thread):
         for k,v in self.nodes.items():
             self.logger.info(f'Processing node {k} with {len(v.pod_info)} pods')
             for pname,pval in v.pod_info.items():
+                annots = self.k8s.GetPodAnnotations(pname[1], pname[0])
+                if annots == None:
+                    self.logger.error(f'Couldn\'t get pod annotations for pod {pname[1]}.{pname[0]}')
+                    continue
+
                 tmp = {
                      'namespace':   pname[1],
                      'podname':     pname[0],
                      'node':        k,
-                     'annotations': self.k8s.GetPodAnnotations(pname[1], pname[0]),
+                     'annotations': annots,
                      'hugepages':   pval.hugepages_gb,
                      'proc_cores':  [pc.core for pg in pval.proc_groups for pc in pg.proc_cores],
                      'proc_helper_cores':  [pc.core for pg in pval.proc_groups for pc in pg.misc_cores],

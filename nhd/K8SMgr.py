@@ -136,7 +136,7 @@ class K8SMgr:
         """ Get the config annotations from the pod """
         try: 
             annot = self.GetPodAnnotations(ns, pod)
-            if 'sigproc.viasat.io/nhd_config' not in annot:
+            if annot == None or 'sigproc.viasat.io/nhd_config' not in annot:
                 self.logger.error(f'Couldn\'t find pod annotations for pod {ns}.{pod}')
                 return False
 
@@ -188,7 +188,7 @@ class K8SMgr:
             return p.metadata.annotations
         except ApiException as e:
             self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)    
-            raise 
+            return None 
 
         return None       
 
