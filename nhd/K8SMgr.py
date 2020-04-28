@@ -119,11 +119,17 @@ class K8SMgr:
         """
         Get the node a pod resides on
         """
-        ret = self.v1.read_namespaced_pod(pod, ns)
-        if ret == None:
-            return None
+        try: 
+            ret = self.v1.read_namespaced_pod(pod, ns)
+            if ret == None:
+                return None
+
+            return ret.spec.node_name
+            
+        except ApiException as e:
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)                  
         
-        return ret.spec.node_name
+        return None
 
     def GetPodObj(self, pod, ns):
         try: 
