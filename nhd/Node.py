@@ -61,6 +61,8 @@ class NodeMemory:
     def __init__(self):
         self.ttl_hugepages_gb = 0
         self.free_hugepages_gb = 0
+        self.ttl_mem_gb = 0
+        self.free_mem_gb = 0 
 
 
 """
@@ -659,7 +661,7 @@ class Node:
                     if gdev == None:
                         # If we can't find a free GPU for this NIC, and we're in PCI mode, then something went wrong. We need to bail out.
                         if top.map_type == TopologyMapType.TOPOLOGY_MAP_PCI: 
-                            self.logger.error(f'Couldn\'t find a free GPU for NIC PCI switch in PCI mode! Bailing out: {nicinfo}')
+                            self.logger.error(f'Couldn\'t find a free GPU for NIC PCI switch in PCI mode for switch {nobj.pciesw}! Bailing out: {nicinfo}')
                             return None
                         else:
                             # Just get the next free GPU we can find since there's not one free on the same PCI switch

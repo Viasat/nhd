@@ -5,26 +5,47 @@ import threading
 from colorlog import ColoredFormatter
 import pkg_resources
 import sys
+import time
 from nhd.NHDCommon import NHDCommon
 from nhd.NHDScheduler import NHDScheduler
 from nhd.NHDRpcServer import NHDRpcServer
 from queue import Queue
+from nhd.NHDWatchQueue import NHDWatchQueue
+from nhd.TriadController import TriadControllerLoop
 
 
 if __name__ == "__main__":
     logger = NHDCommon.GetLogger(__name__)
     threads = []
     q = Queue(maxsize=128)
+    k8sq = NHDWatchQueue()    
 
     try:
+        ready_flag = threading.Event()
+        stop_flag = threading.Event()
+        threads.append(threading.Thread(target=TriadControllerLoop, kwargs=dict(
+            stop_flag=stop_flag,
+            ready_flag=ready_flag,
+        )))   
+             
         threads.append(NHDScheduler(q))
         threads.append(NHDRpcServer(q))
 
         for t in threads:
             t.start()
+
+        ready_flag.wait() 
+
+        # Infinite loop while the operator runs
+        while True:
+            time.sleep(60)
+            continue
+
+        stop_flag.set()  
         
         for t in threads:
             t.join()
+
 
     except KeyboardInterrupt:
         logger.warning("Exiting NHD")

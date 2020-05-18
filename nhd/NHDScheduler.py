@@ -6,6 +6,8 @@ import pkg_resources
 from nhd.NHDCommon import NHDCommon
 from nhd.K8SMgr import K8SEventType
 from colorlog import ColoredFormatter
+from nhd.NHDWatchQueue import qinst
+from nhd.NHDWatchQueue import NHDWatchTypes
 from nhd.Node import Node
 from nhd.K8SMgr import K8SMgr
 from nhd.Matcher import Matcher
@@ -45,8 +47,9 @@ class NHDScheduler(threading.Thread):
         self.whitelist = []
         self.matcher = Matcher()
         self.pod_state = {}
-        self.mainq = q
+        self.rpcq = q
         self.failed_schedule_count = 0
+        self.nqueue = qinst
 
         self.ver = pkg_resources.get_distribution("nhd").version
         self.logger.warning(f'NHD version {self.ver}')
@@ -411,49 +414,71 @@ class NHDScheduler(threading.Thread):
 
         self.logger.warning("Starting main scheduler loop")
 
+        # Do one pass where we look for pods that are pending while NHD wasn't running, and attempt scheduling on this
+        self.logger.info('Scheduling any pods stuck in pending since we last ran')
+        podlist = self.k8s.ServicePods(self.sched_name)        
+        for k,p in podlist.items():
+            if p[0] == 'Pending' and p[1] == None and (k not in self.pod_state):  
+                self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
+                # Normal pod that needs to be scheduled
+                if not self.AttemptScheduling(k[1],k[0]):
+                    self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
+                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
+                else:
+                    self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
+
+            elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
+                self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
+                self.ReleasePodResources(k[1],k[0])
+                self.pod_state[k] = PodStatus.POD_STATUS_FAILED                      
+
         while True:
             # Start watching for pods that want to be scheduled or are waiting to be freed
-            pods = self.k8s.ServicePods(self.sched_name)
-
-            # Check if we need to delete any pods now
-            todel = []
-            for k,p in self.pod_state.items():
-                if k not in pods:
-                    todel.append(k)
-
-            for v in todel:
-                self.logger.info(f'Pod {v[0]}.{v[1]}[{v[2]}] no longer in cluster. Freeing resources')
-                self.ReleasePodResources(v[1],v[0])
-                del self.pod_state[v]
-
-            # Schedule any new pods
-            for k,p in pods.items():
-                if p[0] == 'Pending' and p[1] == None and (k not in self.pod_state):
-                    self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
-                    # Normal pod that needs to be scheduled
-                    if not self.AttemptScheduling(k[1],k[0]):
-                        self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
-                        self.pod_state[k] = PodStatus.POD_STATUS_FAILED
-                    else:
-                        self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
-
-                elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
-                    self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
-                    self.ReleasePodResources(k[1],k[0])
-                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
-
-            self.logger.debug(f'Done processing {len(pods)} pods. {len(self.pod_state)} pods in cache')
-
-            # Check RPC before sleeping
             try:
-                item = self.mainq.get(True, 5)
-
-                self.ParseRPCReq(item[0], item[1])
-                
+                item = self.nqueue.get(block = False, timeout = 0.5)
+                self.logger.info(f"Got new pod notification: {item['type']}")
             except Empty as e:
-                self.logger.debug('Empty gRPC queue')     
-                continue           
+                try:
+                    item = self.rpcq.get(True, 0.5)
+
+                    self.ParseRPCReq(item[0], item[1])
+                    
+                except Empty as e:
+                    self.logger.debug('Empty gRPC queue')    
+
+                continue  
+
+            # Pod creation/deletion events
+            if item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE,
+                                NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE):
+                pn = item["pod"]["name"]
+                ns = item["pod"]["ns"]                                
+                if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE:
+                    self.logger.info(f'Pod {ns}.{pn} no longer in cluster. Freeing resources')
+                    self.ReleasePodResources(pn,ns)
+                    try:
+                        del self.pod_state[(ns, pn)]
+                    except KeyError as e:
+                        self.logger.error(f'Failed to find pod {ns}.{pod} in podstats!')
+
+                elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE:
+                    # Schedule any new pods
+                    self.logger.info(f'Found new pending pod {ns}.{pn}')
+                    # Normal pod that needs to be scheduled
+                    if not self.AttemptScheduling(pn, ns):
+                        self.logger.error(f'Failed scheduling pod {ns}.{pn}')
+                        self.pod_state[(ns, pn)] = PodStatus.POD_STATUS_FAILED
+                    else:
+                        self.pod_state[(ns, pn)] = PodStatus.POD_STATUS_SCHEDULED
+
+                self.logger.debug(f'Done processing {ns}.{pn}. {len(self.pod_state)} pods in cache')
+            # Node scheduleable/unscheduleable
+            elif item["type"] in (  NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON,
+                                    NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON):
+                self.logger.info(f'{"Cordoning" if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON else "Uncordoning"} node {item["node"]}')
+
             
+       
 
                 
 

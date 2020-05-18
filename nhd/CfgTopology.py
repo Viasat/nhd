@@ -12,7 +12,8 @@ class GpuType(Enum):
     GPU_TYPE_GTX_1080TI = 3
     GPU_TYPE_GTX_2080 = 4
     GPU_TYPE_GTX_2080TI = 5
-    GPU_TYPE_NOT_SUPPORTED = 6
+    GPU_TYPE_A100 = 6
+    GPU_TYPE_NOT_SUPPORTED = 7
 
 class CpuType(Enum):
     CPU_TYPE_ALL = 0
