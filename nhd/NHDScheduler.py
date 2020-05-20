@@ -453,12 +453,6 @@ class NHDScheduler(threading.Thread):
                 pn = item["pod"]["name"]
                 ns = item["pod"]["ns"]
 
-                # Note that controller may have been generating events asynchronously about pods we already know about. Check if it's in our list, and do nothing
-                # if it is.
-                if (ns, pn) in self.pod_state:
-                    self.logger.info(f'Already know about pod {ns}.{pn}. Ignoring controller message')       
-                    continue
-
                 if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE:
                     self.logger.info(f'Pod {ns}.{pn} no longer in cluster. Freeing resources')
                     self.ReleasePodResources(pn,ns)
@@ -468,6 +462,12 @@ class NHDScheduler(threading.Thread):
                         self.logger.error(f'Failed to find pod {ns}.{pn} in podstats!')
 
                 elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE:
+                    # Note that controller may have been generating events asynchronously about pods we already know about. Check if it's in our list, and do nothing
+                    # if it is.
+                    if (ns, pn) in self.pod_state:
+                        self.logger.info(f'Already know about pod {ns}.{pn}. Ignoring controller message')       
+                        continue       
+                                 
                     # Schedule any new pods
                     self.logger.info(f'Found new pending pod {ns}.{pn}')
                     # Normal pod that needs to be scheduled
