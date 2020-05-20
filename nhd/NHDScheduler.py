@@ -80,6 +80,7 @@ class NHDScheduler(threading.Thread):
                 if not v.ParseLabels(self.k8s.GetNodeLabels(n)):
                     self.logger.error(f'Error while parsing labels for node {n}, deactivating node')
                     v.active = False
+                    continue
 
                 (alloc, free) = self.k8s.GetNodeHugepageResources(n) 
                 if alloc == 0 or not v.SetHugepages(alloc, free):
