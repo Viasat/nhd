@@ -482,7 +482,7 @@ class NHDScheduler(threading.Thread):
             elif item["type"] in (  NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON,
                                     NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON):
                 self.logger.info(f'{"Cordoning" if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON else "Uncordoning"} node {item["node"]}')
-                for n,v in self.nodes:
+                for n,v in self.nodes.items():
                     if n == item["node"]:
                         if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON:
                             if v.active:
