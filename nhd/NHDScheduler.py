@@ -218,7 +218,7 @@ class NHDScheduler(threading.Thread):
         # default
         return TriadCfgParser(cfgstr, False)
 
-    def FilterNodeGroups(self, podname: str, ns: str):
+    def InitialNodeFilter(self, podname: str, ns: str):
         """ Each pod requests a node group to be in, or "default" if none is seen. Only schedule pods on nodes matching their node group.
             This allows users to segment some nodes for different purposes without affecting the main cluster. """
         ngroup = self.k8s.GetPodNodeGroup(podname, ns)
