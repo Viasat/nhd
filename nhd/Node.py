@@ -95,10 +95,11 @@ The Node class holds properties about a node's resources, as well as which resou
 Current resource types in a node are CPUs, GPU, and NICs.
 """
 class Node:
-    def __init__(self, name):
+    def __init__(self, name, active = True):
         self.logger = NHDCommon.GetLogger(__name__)
 
         self.name = name
+        self.active = active
         self.cores: List[NodeCore] = []
         self.gpus = []
         self.nics = []

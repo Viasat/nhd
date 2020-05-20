@@ -10,7 +10,7 @@ from nhd.NHDCommon import NHDCommon
 from nhd.NHDScheduler import NHDScheduler
 from nhd.NHDRpcServer import NHDRpcServer
 from queue import Queue
-from nhd.NHDWatchQueue import NHDWatchQueue
+from nhd.NHDWatchQueue import qinst
 from nhd.TriadController import TriadControllerLoop
 
 
@@ -18,7 +18,10 @@ if __name__ == "__main__":
     logger = NHDCommon.GetLogger(__name__)
     threads = []
     q = Queue(maxsize=128)
-    k8sq = NHDWatchQueue()    
+
+    # Initialize shared queue
+    k8sq = qinst.size()
+  
 
     try:
         ready_flag = threading.Event()

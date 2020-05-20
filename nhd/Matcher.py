@@ -274,15 +274,19 @@ class Matcher:
             For example, even though we may have had 4 GPUs free and 20 CPU cores, it's possible that all 4 GPUs are on NUMA
             node 0, and the 20 CPU cores are on node 1, so it's not a valid match.
         """
-        self.logger.info('Matching NUMA nodes')
         cand_list = filts[1].copy()
         self.logger.info(f'Starting intersection with candidate list: {cand_list}')
 
-
         # If we're intersecting PCI switches, remove those candidates from the NIC list first.
         if map_type == TopologyMapType.TOPOLOGY_MAP_PCI:
+            self.logger.info('Beginning PCI intersection')
             for n,v in nl.items():
                 to_remove = []
+
+                # Skip over our pre-filtered list
+                if n not in cand_list:
+                    continue
+
                 self.logger.info(f'Intersecting PCIe resources on node {n}')
 
                 # First find all the possible NUMA combinations of NIC + GPU that are on the same switch

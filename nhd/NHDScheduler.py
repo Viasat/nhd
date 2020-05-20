@@ -44,7 +44,6 @@ class NHDScheduler(threading.Thread):
         self.node_groups = defaultdict(list)
         self.k8s = K8SMgr.GetInstance()
         self.sched_name = NHD_SCHED_NAME
-        self.whitelist = []
         self.matcher = Matcher()
         self.pod_state = {}
         self.rpcq = q
@@ -54,28 +53,19 @@ class NHDScheduler(threading.Thread):
         self.ver = pkg_resources.get_distribution("nhd").version
         self.logger.warning(f'NHD version {self.ver}')
 
-    def AddNodeWhiteList(self, nl):
-        """
-        Creates a white list of scheduling nodes. This is used for debug purposes when we don't want to 
-        scan all the taints to find ones we're using.
-        """
-        self.whitelist = nl
 
     def InitNHDNodes(self):
         """
         Find all nodes handled by NHD given the node taints
         """        
-        if len(self.whitelist) > 0:
-            self.logger.info('Node whitelist is not empty, using nodes from that list as schedulable nodes')
-            for n in self.whitelist:
-                self.nodes[n] = Node(n)
-        else:
-            nodes = self.k8s.GetNodes()
-            for n in nodes:
-                if self.k8s.IsNHDTainted(n):
-                    self.nodes[n] = Node(n)
+        nodes = self.k8s.GetNodes()
+        for n in nodes:
+            active = self.k8s.IsNodeActive(n)
+            self.nodes[n] = Node(n, active)
 
-        self.logger.info(f'{len(self.nodes)} nodes are marked as schedulable by NHD: {self.nodes.keys()}')
+        schedulable = sum([node.active for node in self.nodes.values()])
+
+        self.logger.info(f'{schedulable} nodes are marked as schedulable by NHD out of {len(self.nodes)} total nodes: {self.nodes.keys()}')
 
     def BuildInitialNodeList(self):
         """ Builds the initial list of available nodes on startup. In the future we need to watch for downed nodes and
@@ -83,32 +73,26 @@ class NHDScheduler(threading.Thread):
         self.logger.info("Populating list of nodes") 
         self.InitNHDNodes()
 
-        todel = []
         for n,v in self.nodes.items():
             try:
                 v.SetNodeAddr(self.k8s.GetNodeAddr(n))
 
                 if not v.ParseLabels(self.k8s.GetNodeLabels(n)):
-                    self.logger.error(f'Error while parsing labels for node {n}, removing from list')
-                    todel.append(n)
+                    self.logger.error(f'Error while parsing labels for node {n}, deactivating node')
+                    v.active = False
 
                 (alloc, free) = self.k8s.GetNodeHugepageResources(n) 
                 if alloc == 0 or not v.SetHugepages(alloc, free):
-                    self.logger.error(f'Error while parsing allocatable resources for node {n}, removing from list')
-                    todel.append(n)                    
+                    self.logger.error(f'Error while parsing allocatable resources for node {n}, deactivating node')
+                    v.active = False                  
 
             except Exception as e:
                 print('Caught exception while setting up node {n}:', e)
-                todel.append(n)
-
-        # Delete all nodes that had issues when parsing
-        if len(todel):
-            self.logger.info('Removing bad nodes from list')
-            for n in todel:
-                del self.nodes[n]
+                v.active = False
 
         for k,v in self.nodes.items():
-            self.logger.info(f'Adding node {k} to scheduling list')
+            if v.active:
+                self.logger.info(f'Adding node {k} to scheduling list')
 
         self.logger.info("Done building initial node list")
 
@@ -147,6 +131,7 @@ class NHDScheduler(threading.Thread):
             #     self.logger.error(f'Error while parsing allocatable resources for node {n}')
 
             self.nodes[n].AddScheduledPod(podname, ns, top)
+            self.pod_state[(ns, podname)] = PodStatus.POD_STATUS_SCHEDULED
 
     def ResetResources(self):
         """ Resets all known resources to those that have already been deployed. Useful when deployed resources
@@ -239,7 +224,10 @@ class NHDScheduler(threading.Thread):
         nl = {}
         for n,v in self.nodes.items():
             if v.group == ngroup:
-                nl[n] = v
+                if v.active:
+                    nl[n] = v
+                else:
+                    self.logger.info(f'Node {n} is in the group, but not active. Skipping')
 
         return nl
 
@@ -267,9 +255,10 @@ class NHDScheduler(threading.Thread):
                     f'Error while processing config for pod {podname}')
             return False
 
+
         # Filter out nodes not belonging to the node group requested by this pod
-        filt_nodes = self.FilterNodeGroups(podname, ns)
-        self.logger.info(f"Nodes matching group filter: {filt_nodes}")
+        filt_nodes = self.InitialNodeFilter(podname, ns)
+        self.logger.info(f"Nodes matching first filter: {filt_nodes}")
         
         match = self.matcher.FindNode(filt_nodes, top)
         nodename = match[0]
@@ -412,8 +401,6 @@ class NHDScheduler(threading.Thread):
         self.LoadDeployedConfigs()
         self.PrintAllNodeResources()
 
-        self.logger.warning("Starting main scheduler loop")
-
         # Do one pass where we look for pods that are pending while NHD wasn't running, and attempt scheduling on this
         self.logger.info('Scheduling any pods stuck in pending since we last ran')
         podlist = self.k8s.ServicePods(self.sched_name)        
@@ -430,8 +417,19 @@ class NHDScheduler(threading.Thread):
             elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
                 self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
                 self.ReleasePodResources(k[1],k[0])
-                self.pod_state[k] = PodStatus.POD_STATUS_FAILED                      
+                self.pod_state[k] = PodStatus.POD_STATUS_FAILED   
 
+        # Flush queue from any events that may have come in while we were servicing the existing pods on startup
+        self.logger.info('Flushing controller queue')
+        cnt = 0
+        try:
+            while True:
+                item = self.nqueue.get(block = False, timeout = 0)
+                cnt += 1
+        except Empty as e:
+            self.logger.info(f'Queue flushed with {cnt} messages in it')
+        
+        self.logger.warning("Starting main scheduler loop")
         while True:
             # Start watching for pods that want to be scheduled or are waiting to be freed
             try:
@@ -452,14 +450,21 @@ class NHDScheduler(threading.Thread):
             if item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE,
                                 NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE):
                 pn = item["pod"]["name"]
-                ns = item["pod"]["ns"]                                
+                ns = item["pod"]["ns"]
+
+                # Note that controller may have been generating events asynchronously about pods we already know about. Check if it's in our list, and do nothing
+                # if it is.
+                if (ns, pn) in self.pod_state:
+                    self.logger.info(f'Already know about pod {ns}.{pn}. Ignoring controller message')       
+                    continue
+
                 if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE:
                     self.logger.info(f'Pod {ns}.{pn} no longer in cluster. Freeing resources')
                     self.ReleasePodResources(pn,ns)
                     try:
                         del self.pod_state[(ns, pn)]
                     except KeyError as e:
-                        self.logger.error(f'Failed to find pod {ns}.{pod} in podstats!')
+                        self.logger.error(f'Failed to find pod {ns}.{pn} in podstats!')
 
                 elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE:
                     # Schedule any new pods
@@ -476,13 +481,19 @@ class NHDScheduler(threading.Thread):
             elif item["type"] in (  NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON,
                                     NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON):
                 self.logger.info(f'{"Cordoning" if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON else "Uncordoning"} node {item["node"]}')
-
-            
-       
-
-                
-
-
-
-
+                for n,v in self.nodes:
+                    if n == item["node"]:
+                        if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON:
+                            if v.active:
+                                self.logger.info(f'Removing node {item["node"]} from scheduling')
+                                v.active = False
+                            else:
+                                self.logger.info(f'Node {item["node"]} already deactivated from scheduling')
+                        elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON:
+                            if v.active:
+                                self.logger.info(f'Node {item["node"]} already activated for scheduling')   
+                            else:
+                                self.logger.info(f'Adding node {item["node"]} to schedulable list')
+                                v.active = True
+                                                         
 

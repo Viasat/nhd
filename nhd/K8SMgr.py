@@ -165,7 +165,7 @@ class K8SMgr:
             self.logger.info(f'Pod is using NHD group {group}') 
             return str(group)
 
-    def IsNHDTainted(self, node):
+    def IsNodeActive(self, node):
         """
         Find out if the node is tainted for NHD. Only tainted nodes will be used by NHD for scheduling, and also
         ignored by the default scheduler.
@@ -174,6 +174,9 @@ class K8SMgr:
         try: 
             a = self.v1.read_node(name = node)        
             taints = a.spec.taints
+
+            if candidate and not (a.status.status == "True" and a.status.type == "Ready"): 
+                return False         
             
             for t in taints:
                 if t.key == 'sigproc.viasat.io/nhd_scheduler' and t.effect == 'NoSchedule':
@@ -181,7 +184,7 @@ class K8SMgr:
                 if t.key == 'node.kubernetes.io/unschedulable':
                     self.logger.warning(f'Node {node} disabled scheduling. Removing from list')
                     candidate = False
-                    break                   
+                    break  
 
         except Exception:
             return False
