@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import threading
 import time
+import logging
 from kubernetes import client, config, watch
 from kubernetes.client.rest import ApiException
 from nhd.NHDWatchQueue import qinst
@@ -13,6 +14,10 @@ import yaml
 
 # The operator class starts up new pods matching a certain type of CRD. The NHD schedule is agnostic to CRDs, 
 # so the pods must either be started from a statefulset or some other controller.
+
+@kopf.on.startup()
+def MuteLogs(logger, **kwargs):
+    logging.getLogger().handlers[:] = []
 
 
 @kopf.on.create('sigproc.viasat.io', 'v1', 'triadsets')
