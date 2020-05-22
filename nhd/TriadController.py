@@ -44,7 +44,12 @@ def TriadSetCreate(spec, meta, **_):
     # Start up all the pods in our set
     for ord in range(int(spec["replicas"])):
         logger.info(f'Creating pod {meta["name"]} pod with ordinal index {ord}')
-        podyaml['metadata']['name'] = f'{meta["name"]}-{ord}' # Give it the canonical statefulset-type name
+        podname = f'{meta["name"]}-{ord}'
+        podyaml['metadata']['name'] = podname # Give it the canonical statefulset-type name
+
+        # Patch in the hostname and subdomain to create a DNS record like a statefulset
+        podyaml['spec']['hostname']  = podname
+        podyaml['spec']['subdomain'] = meta["name"]
         kopf.adopt(podyaml)
 
         v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
