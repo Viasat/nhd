@@ -73,18 +73,8 @@ class K8SMgr:
             a = self.v1.read_node(name = node)
             alloc = int(a.status.allocatable['hugepages-1Gi'][:a.status.allocatable['hugepages-1Gi'].find('G')])
 
-            # The actual amount of allocatable hugepages must be retrieved by iterating over each pod on this node
             free = alloc
-            pods = self.v1.list_pod_for_all_namespaces(watch=False)
-            for i in pods.items:
-                if i.status.phase in ('Running', 'ContainerCreating', 'Pending'):
-                    if i.spec.node_name != node:
-                        continue
-
-                    for c in i.spec.containers:
-                        if c.resources.requests and 'hugepages-1Gi' in c.resources.requests:
-                            free -= int(c.resources.requests['hugepages-1Gi'][:c.resources.requests['hugepages-1Gi'].find('G')])
-
+            # Don't tabulate hugepage resources that are used here since we'll get them when we subtract off pods
 
             return (alloc, free)
 
@@ -480,7 +470,7 @@ class K8SMgr:
             return self.v1.create_namespaced_binding(namespace=ns, body=body)
 
         except ApiException as e:
-            self.logger.error(f'Failed to bind pod {podname} to node {node} in namespace {ns}')
+            self.logger.error(f'Failed to bind pod {podname} to node {node} in namespace {ns}: {e}')
             return False
         except ValueError as e:
             # This is not a real error. It's a problem in the API waiting to be fixed:
