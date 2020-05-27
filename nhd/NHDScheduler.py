@@ -41,7 +41,6 @@ class NHDScheduler(threading.Thread):
         threading.Thread.__init__(self)
         self.logger = NHDCommon.GetLogger(__name__)
         self.nodes = {}
-        self.node_groups = defaultdict(list)
         self.k8s = K8SMgr.GetInstance()
         self.sched_name = NHD_SCHED_NAME
         self.matcher = Matcher()
@@ -221,10 +220,10 @@ class NHDScheduler(threading.Thread):
     def InitialNodeFilter(self, podname: str, ns: str):
         """ Each pod requests a node group to be in, or "default" if none is seen. Only schedule pods on nodes matching their node group.
             This allows users to segment some nodes for different purposes without affecting the main cluster. """
-        ngroup = self.k8s.GetPodNodeGroup(podname, ns)
+        ngroups = self.k8s.GetPodNodeGroups(podname, ns)
         nl = {}
         for n,v in self.nodes.items():
-            if v.group == ngroup:
+            if len(set(v.groups) & set(ngroups)) > 0:
                 if v.active:
                     nl[n] = v
                 else:

@@ -110,7 +110,7 @@ class Node:
         self.cores_per_proc = 0
         self.pod_info = {}
         self.data_vlan = 0
-        self.group: str = 'default'
+        self.groups: List[str] = ['default']
         self.gwip : str = '0.0.0.0/32'
         self.mem: NodeMemory = NodeMemory()
         self.reserved_cores = [] # Reserved CPU cores
@@ -278,10 +278,10 @@ class Node:
         """ Initialize the node groups. If a node does not have this label, it's put into the default group """   
         if not ('NHD_GROUP' in labels):
             self.logger.warning(f'Couldn\'t find node NHD group in labels for node {self.name}. Using default')
-            self.group = 'default'
+            self.groups = ['default']
         else:
-            self.group = labels['NHD_GROUP']
-            self.logger.warning(f'NHD group set to {self.group} for node {self.name}')  
+            self.groups = labels['NHD_GROUP'].split(',')
+            self.logger.warning(f'NHD group set to {self.groups} for node {self.name}')  
 
         return True    
 

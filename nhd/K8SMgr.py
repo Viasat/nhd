@@ -142,7 +142,7 @@ class K8SMgr:
         
         return False
 
-    def GetPodNodeGroup(self, pod, ns) -> str:
+    def GetPodNodeGroups(self, pod, ns) -> str:
         """ Returns the node group name of the pod, or "default" if it doesn't exist. """
         try:
             p = self.v1.read_namespaced_pod(pod, ns)
@@ -150,10 +150,10 @@ class K8SMgr:
             self.logger.warning(f"Failed to get pod annotations for pod {pod} in namespace {ns}")
             return "default"
 
-        if 'sigproc.viasat.io/nhd_group' in p.metadata.annotations:
-            group = p.metadata.annotations["sigproc.viasat.io/nhd_group"]
-            self.logger.info(f'Pod is using NHD group {group}') 
-            return str(group)
+        if 'sigproc.viasat.io/nhd_groups' in p.metadata.annotations:
+            groups = p.metadata.annotations["sigproc.viasat.io/nhd_groups"].split(',')
+            self.logger.info(f'Pod is using NHD group {groups}') 
+            return groups
 
     def IsNodeActive(self, node):
         """
