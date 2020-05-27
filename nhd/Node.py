@@ -276,7 +276,7 @@ class Node:
 
     def SetGroups(self, groups:str):
         """ Sets the node groups from a label string """
-        self.groups = groups.split(',')
+        self.groups = groups.split('.')
 
     def InitGroups(self, labels):
         """ Initialize the node groups. If a node does not have this label, it's put into the default group """   
@@ -284,7 +284,7 @@ class Node:
             self.logger.warning(f'Couldn\'t find node NHD group in labels for node {self.name}. Using default')
             self.groups = ['default']
         else:
-            self.groups = labels['NHD_GROUP'].split(',')
+            self.groups = labels['NHD_GROUP'].split('.')
             self.logger.warning(f'NHD group set to {self.groups} for node {self.name}')  
 
         return True    
