@@ -272,7 +272,11 @@ class Node:
         def ParseRange(r):
             parts = r.split("-")
             return range(int(parts[0]), int(parts[-1])+1)
-        return sorted(set(chain.from_iterable(map(ParseRange, rl.split(",")))))    
+        return sorted(set(chain.from_iterable(map(ParseRange, rl.split(",")))))   
+
+    def SetGroups(self, groups:str):
+        """ Sets the node groups from a label string """
+        self.groups = groups.split(',')
 
     def InitGroups(self, labels):
         """ Initialize the node groups. If a node does not have this label, it's put into the default group """   

@@ -10,6 +10,7 @@ class NHDWatchTypes(Enum):
     NHD_WATCH_TYPE_TRIAD_POD_DELETE = 4,
     NHD_WATCH_TYPE_NODE_UNCORDON = 5,
     NHD_WATCH_TYPE_NODE_CORDON = 6,
+    NHD_WATCH_TYPE_GROUP_UPDATE = 7,
 
 
 class NHDWatchQueue(object):

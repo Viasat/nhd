@@ -49,6 +49,18 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
         logger.info(f'Cordoning node {meta["name"]}')
         k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON, "node": meta["name"]})
 
+    # Detect NHD group changes. If the label didn't exist, or it's now different than the old one, send the new one
+    if ('NHD_GROUP' not in old['metadata']['labels'] and 'NHD_GROUP' in new['metadata']['labels']) or \
+       ('NHD_GROUP' in old['metadata']['labels'] and 'NHD_GROUP' in new['metadata']['labels'] and old['metadata']['labels'] != new['metadata']['labels']):
+
+       logger.info(f'Updating NHD group for node {meta["name"]} to {new["metadata"]["labels"]["NHD_GROUP"]}')
+       k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE, "node": meta["name"], "groups": new['metadata']['labels']['NHD_GROUP']})
+    elif ('NHD_GROUP' in old['metadata']['labels']) and ('NHD_GROUP' not in new['metadata']['labels']): # Label removed
+        
+       logger.info(f'Updating NHD group for node {meta["name"]} to default')
+       k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE, "node": meta["name"], "groups" : "default"})
+
+
 @kopf.timer('sigproc.viasat.io', 'v1', 'triadsets', interval = 3.0, idle = 3.0)
 async def MonitorTriadSets(spec, meta, **kwargs):
     logger = NHDCommon.GetLogger(__name__)

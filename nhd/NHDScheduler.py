@@ -495,5 +495,11 @@ class NHDScheduler(threading.Thread):
                             else:
                                 self.logger.info(f'Adding node {item["node"]} to schedulable list')
                                 v.active = True
-                                                         
+                        break
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE:
+                self.logger.info(f'Updating NHD group to {item["groups"]} for node {item["node"]}')  
+                for n,v in self.nodes.items():
+                    if n == item["node"]:
+                        v.SetGroups(item["groups"])
+
 
