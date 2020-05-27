@@ -21,7 +21,6 @@ def Configure(settings: kopf.OperatorSettings, **kwargs):
  
 
 
-
 @kopf.on.create('sigproc.viasat.io', 'v1', 'triadsets')
 def TriadSetCreate(spec, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
@@ -53,7 +52,7 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
 @kopf.timer('sigproc.viasat.io', 'v1', 'triadsets', interval = 3.0, idle = 3.0)
 async def MonitorTriadSets(spec, meta, **kwargs):
     logger = NHDCommon.GetLogger(__name__)
-    logger.info(f'Kicking off controller timer for {meta["namespace"]}/{meta["name"]}')
+    logger.debug(f'Kicking off controller timer for {meta["namespace"]}/{meta["name"]}')
     try:
         config.load_incluster_config()
     except:
