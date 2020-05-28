@@ -463,8 +463,8 @@ class NHDScheduler(threading.Thread):
                 elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE:
                     # Note that controller may have been generating events asynchronously about pods we already know about. Check if it's in our list, and do nothing
                     # if it is.
-                    if (ns, pn) in self.pod_state:
-                        self.logger.info(f'Already know about pod {ns}.{pn}. Ignoring controller message')       
+                    if ((ns, pn) in self.pod_state) and (self.pod_state[(ns, pn)] == PodStatus.POD_STATUS_SCHEDULED):
+                        self.logger.info(f'Pod {ns}.{pn} appears to be scheduled already. Ignoring controller message')       
                         continue       
                                  
                     # Schedule any new pods
