@@ -453,7 +453,7 @@ class NHDScheduler(threading.Thread):
                 ns = item["pod"]["ns"]
 
                 if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE:
-                    self.logger.info(f'Pod {ns}.{pn} no longer in cluster. Freeing resources')
+                    self.logger.info(f'Pod {ns}.{pn} deleted. Freeing resources')
                     self.ReleasePodResources(pn,ns)
                     try:
                         del self.pod_state[(ns, pn)]

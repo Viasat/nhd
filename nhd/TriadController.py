@@ -20,21 +20,21 @@ def Configure(settings: kopf.OperatorSettings, **kwargs):
     settings.persistence.finalizer = 'sigproc.viasat.io/nhd-finalizer'
  
 
-
+# TriadSet created -- nothing to do here since our timer will create the pods
 @kopf.on.create('sigproc.viasat.io', 'v1', 'triadsets')
 def TriadSetCreate(spec, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
     logger.info(f'Found new TriadSet for component {spec["serviceName"]} with {spec["replicas"]} replicas in namespace {meta["namespace"]}')
 
 
-
+# TriadSet deleted. Nothing really to do here since k8s will tear the pods down as part of the ownership
 @kopf.on.delete('sigproc.viasat.io', 'v1', 'triadsets')
 def delete_fn(meta, **_):
     logger = NHDCommon.GetLogger(__name__)
     logger.info('Received delete request for TriadSet')
 
 
-
+# Dete node changes to determine if a node is cordoned and/or the NHD group label is changing
 @kopf.on.update('', 'v1', 'nodes')
 def TriadNodeUpdate(spec, old, new, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
@@ -56,11 +56,12 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
        logger.info(f'Updating NHD group for node {meta["name"]} to {new["metadata"]["labels"]["NHD_GROUP"]}')
        k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE, "node": meta["name"], "groups": new['metadata']['labels']['NHD_GROUP']})
     elif ('NHD_GROUP' in old['metadata']['labels']) and ('NHD_GROUP' not in new['metadata']['labels']): # Label removed
-        
+
        logger.info(f'Updating NHD group for node {meta["name"]} to default')
        k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE, "node": meta["name"], "groups" : "default"})
 
-
+# Timer acting as the TriadSet controller. Pods under the set are only created here either by a new set appearing, or an
+# existing pod being deleted.
 @kopf.timer('sigproc.viasat.io', 'v1', 'triadsets', interval = 3.0, idle = 3.0)
 async def MonitorTriadSets(spec, meta, **kwargs):
     logger = NHDCommon.GetLogger(__name__)

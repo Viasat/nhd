@@ -148,7 +148,7 @@ class K8SMgr:
             p = self.v1.read_namespaced_pod(pod, ns)
         except:
             self.logger.warning(f"Failed to get pod annotations for pod {pod} in namespace {ns}")
-            return "default"
+            return ["default"]
 
         if 'sigproc.viasat.io/nhd_groups' in p.metadata.annotations:
             groups = p.metadata.annotations["sigproc.viasat.io/nhd_groups"].split(',')
