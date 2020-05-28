@@ -154,6 +154,8 @@ class K8SMgr:
             groups = p.metadata.annotations["sigproc.viasat.io/nhd_groups"].split(',')
             self.logger.info(f'Pod is using NHD group {groups}') 
             return groups
+        else:
+            return ["default"]
 
     def IsNodeActive(self, node):
         """
