@@ -19,6 +19,10 @@ NHD is a topology-aware custom scheduler used for Kubernetes. The scheduler is a
 * SR-IOV support, including all NUMA/PCI scheduling constraints
 * Adhere's to normal Kubernetes cordons/uncordon conventions
 
+## More Information
+* Kubecon slides: https://static.sched.com/hosted_files/kccncna19/b3/nhd_kubecon_final_brief.pptx
+* Kubecon talk: https://www.youtube.com/watch?v=8N8vErJmzdc
+
 ## Requirements
 * Python 3.7 or higher
 * libconfig 2.0.0
