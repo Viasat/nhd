@@ -11,13 +11,22 @@ NHD is a topology-aware custom scheduler used for Kubernetes. The scheduler is a
      + [GPUs](#gpus)     
      + [NICs](#nics)          
   
+## Features
+* NUMA-aware scheduling for CPUs, GPUs, and NICs
+* PCI-aware scheduling for GPU and NICs for GPUDirect applications
+* gRPC interface for scheduling statistics
+* Node groupings where nodes can be isolated into groups, and pods can map N:N to groups
+* SR-IOV support, including all NUMA/PCI scheduling constraints
+* Adhere's to normal Kubernetes cordons/uncordon conventions
+
 ## Requirements
-* Python 3.5 or higher
+* Python 3.7 or higher
 * libconfig 2.0.0
 * magicattr
 * Official Kubernetes Python API (https://github.com/kubernetes-client/python)
 * Existing kubeconfig in ~/.kube/config
 * NFD (Node Feature Discovery) in Kubernetes with Viasat user hook (https://github.com/kubernetes-sigs/node-feature-discovery)
+* kopf 0.27rc6 or higher
 
 ## Preparing Cluster
 NHD requires several things to be in place in your cluster before it can be used.
