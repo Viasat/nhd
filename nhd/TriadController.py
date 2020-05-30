@@ -42,7 +42,7 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
 
     k8sq = qinst
     # If the NHD taint has been added/removed or the code has been cordoned/uncordoned, detect it here
-    if (not NHDTainted(old) and NHDTainted(new)) or ('unschedulable' in old['spec'] and 'unschedulable' not in new['spec']): # Uncordon
+    if (not NHDTainted(old) and NHDTainted(new)) or (('unschedulable' in old['spec'] and 'unschedulable' not in new['spec']) and NHDTainted(new)): # Uncordon
         logger.info(f'Uncordoning node {meta["name"]}')
         k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
     elif (not NHDTainted(new) and NHDTainted(old)) or ('unschedulable' not in old['spec'] and 'unschedulable' in new['spec']): # Cordon:
