@@ -20,6 +20,9 @@ from nhd.NHDCommon import RpcMsgType
 from collections import defaultdict
 
 NHD_SCHED_NAME = "nhd-scheduler"
+IDLE_CNT_THRESH = 10
+Q_BLOCK_TIME_SEC = 0.5
+
 
 # Scheduler status for each pod 
 class PodStatus(Enum):
@@ -390,7 +393,24 @@ class NHDScheduler(threading.Thread):
             q.put(rsp)
         elif msgid == RpcMsgType.TYPE_POD_INFO:
             rsp = self.GetPodStats()
-            q.put(rsp)            
+            q.put(rsp) 
+
+    def CheckPendingPods(self):
+        podlist = self.k8s.ServicePods(self.sched_name)        
+        for k,p in podlist.items():
+            if p[0] == 'Pending' and p[1] == None and ((k not in self.pod_state) or self.pod_state[k] != PodStatus.POD_STATUS_SCHEDULED):  
+                self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
+                # Normal pod that needs to be scheduled
+                if not self.AttemptScheduling(k[1],k[0]):
+                    self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
+                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
+                else:
+                    self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
+
+            elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
+                self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
+                self.ReleasePodResources(k[1],k[0])
+                self.pod_state[k] = PodStatus.POD_STATUS_FAILED           
 
     def run(self):
         """ 
@@ -403,21 +423,7 @@ class NHDScheduler(threading.Thread):
 
         # Do one pass where we look for pods that are pending while NHD wasn't running, and attempt scheduling on this
         self.logger.info('Scheduling any pods stuck in pending since we last ran')
-        podlist = self.k8s.ServicePods(self.sched_name)        
-        for k,p in podlist.items():
-            if p[0] == 'Pending' and p[1] == None and (k not in self.pod_state):  
-                self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
-                # Normal pod that needs to be scheduled
-                if not self.AttemptScheduling(k[1],k[0]):
-                    self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
-                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
-                else:
-                    self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
-
-            elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
-                self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
-                self.ReleasePodResources(k[1],k[0])
-                self.pod_state[k] = PodStatus.POD_STATUS_FAILED   
+        self.CheckPendingPods()   
 
         # Flush queue from any events that may have come in while we were servicing the existing pods on startup
         self.logger.info('Flushing controller queue')
@@ -430,19 +436,28 @@ class NHDScheduler(threading.Thread):
             self.logger.info(f'Queue flushed with {cnt} messages in it')
         
         self.logger.warning("Starting main scheduler loop")
+
+        idle_cnt = 0
+
         while True:
             # Start watching for pods that want to be scheduled or are waiting to be freed
             try:
-                item = self.nqueue.get(block = False, timeout = 0.5)
+                item = self.nqueue.get(block = False)
                 self.logger.info(f"Got new pod notification: {item['type']}")
             except Empty as e:
                 try:
-                    item = self.rpcq.get(True, 0.5)
+                    item = self.rpcq.get(True, Q_BLOCK_TIME_SEC)
 
                     self.ParseRPCReq(item[0], item[1])
                     
                 except Empty as e:
                     self.logger.debug('Empty gRPC queue')    
+
+                    # If we've been completely idle for a while, check any pending pods to be scheduled
+                    idle_cnt += 1
+                    if idle_cnt >= IDLE_CNT_THRESH:
+                        idle_cnt = 0                 
+                        self.CheckPendingPods()
 
                 continue  
 
@@ -459,6 +474,7 @@ class NHDScheduler(threading.Thread):
                         del self.pod_state[(ns, pn)]
                     except KeyError as e:
                         self.logger.error(f'Failed to find pod {ns}.{pn} in podstats!')
+
 
                 elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE:
                     # Note that controller may have been generating events asynchronously about pods we already know about. Check if it's in our list, and do nothing
@@ -495,6 +511,7 @@ class NHDScheduler(threading.Thread):
                             else:
                                 self.logger.info(f'Adding node {item["node"]} to schedulable list')
                                 v.active = True
+
                         break
             elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE:
                 self.logger.info(f'Updating NHD group to {item["groups"]} for node {item["node"]}')  

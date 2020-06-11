@@ -127,6 +127,8 @@ class K8SMgr:
             return pobj
         except ApiException as e:
             self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)  
+        
+        return None
 
     def GetCfgAnnotations(self, pod, ns):
         """ Get the config annotations from the pod """
@@ -224,7 +226,7 @@ class K8SMgr:
 
 
     def ServicePods(self, sched_name):
-        """ Check if a pod is waiting to be scheduled """
+        """ Check if a pod is waiting to be scheduled with the NHD scheduler """
         ret = self.v1.list_pod_for_all_namespaces()
         pods = {}
         for i in ret.items:
@@ -232,15 +234,6 @@ class K8SMgr:
                 continue
 
             pods[(i.metadata.namespace, i.metadata.name, i.metadata.uid)] = (i.status.phase, i.spec.node_name)
-
-#            if event['object'].status.phase == "Pending" and event['object'].spec.node_name is None:
-#                try:
-#                    pods.append((event['object'].metadata.name, event['object'].metadata.namespace, PodStatus.POD_STATUS_PENDING))
-#                except client.rest.ApiException as e:
-#                    self.logger.error(json.loads(e.body)['message'])                
-#
-#            elif event['object'].status.phase == "Failed":
-#                pods.append((event['object'].metadata.name, event['object'].metadata.namespace, PodStatus.POD_STATUS_FAILED))
 
         return pods
 
