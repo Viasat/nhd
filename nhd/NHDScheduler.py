@@ -398,19 +398,20 @@ class NHDScheduler(threading.Thread):
     def CheckPendingPods(self):
         podlist = self.k8s.ServicePods(self.sched_name)        
         for k,p in podlist.items():
-            if p[0] == 'Pending' and p[1] == None and ((k not in self.pod_state) or self.pod_state[k] != PodStatus.POD_STATUS_SCHEDULED):  
+            podkey = (k[0],k[1])
+            if p[0] == 'Pending' and p[1] == None and ((podkey not in self.pod_state) or self.pod_state[podkey] != PodStatus.POD_STATUS_SCHEDULED):  
                 self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
                 # Normal pod that needs to be scheduled
                 if not self.AttemptScheduling(k[1],k[0]):
                     self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
-                    self.pod_state[k] = PodStatus.POD_STATUS_FAILED
+                    self.pod_state[podkey] = PodStatus.POD_STATUS_FAILED
                 else:
-                    self.pod_state[k] = PodStatus.POD_STATUS_SCHEDULED
+                    self.pod_state[podkey] = PodStatus.POD_STATUS_SCHEDULED
 
-            elif (p[0] == 'Failed') and (k in self.pod_state) and (self.pod_state[k] == PodStatus.POD_STATUS_SCHEDULED):
+            elif (p[0] == 'Failed') and (podkey in self.pod_state) and (self.pod_state[podkey] == PodStatus.POD_STATUS_SCHEDULED):
                 self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
                 self.ReleasePodResources(k[1],k[0])
-                self.pod_state[k] = PodStatus.POD_STATUS_FAILED           
+                self.pod_state[podkey] = PodStatus.POD_STATUS_FAILED           
 
     def run(self):
         """ 
