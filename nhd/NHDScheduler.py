@@ -155,7 +155,7 @@ class NHDScheduler(threading.Thread):
         pods = self.k8s.GetScheduledPods(self.sched_name)
         self.logger.info(f'Found scheduled pods: {pods}')
         for p in pods:
-            if p[2] in ('Running', 'CrashLoopBackOff', 'Pending'):
+            if p[2] in ('Running', 'CrashLoopBackOff'):
                 self.logger.info(f'Reclaiming resources for pod {p[1]}.{p[0]}')
                 self.ClaimPodResources(p[0], p[1])
 

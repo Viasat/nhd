@@ -42,6 +42,7 @@ class TopologyMapType(Enum):
     TOPOLOGY_MAP_INVALID = 0
     TOPOLOGY_MAP_NUMA = 1
     TOPOLOGY_MAP_PCI = 2
+    TOPOLOGY_MAP_NONE = 3 # Don't care about NUMA or PCI constraints
 
 
 class Core:
