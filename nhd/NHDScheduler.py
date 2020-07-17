@@ -392,7 +392,6 @@ class NHDScheduler(threading.Thread):
             q.put(rsp)
         elif msgid == RpcMsgType.TYPE_SCHEDULER_INFO:
             rsp = self.failed_schedule_count
-            self.failed_schedule_count = 0
             q.put(rsp)
         elif msgid == RpcMsgType.TYPE_POD_INFO:
             rsp = self.GetPodStats()

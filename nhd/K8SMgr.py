@@ -227,8 +227,13 @@ class K8SMgr:
 
     def ServicePods(self, sched_name):
         """ Check if a pod is waiting to be scheduled with the NHD scheduler """
-        ret = self.v1.list_pod_for_all_namespaces()
-        pods = {}
+        pods = {}        
+        try:
+            ret = self.v1.list_pod_for_all_namespaces()
+        except kubernetes.client.rest.ApiException as e:
+            self.logger.error("Failed to connect to Kubernetes")
+            return pods
+
         for i in ret.items:
             if i.spec.scheduler_name != sched_name:
                 continue
