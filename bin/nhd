@@ -42,15 +42,13 @@ if __name__ == "__main__":
         # Infinite loop while the threads run
         while True:
             killit = False
-            if ready_flag.is_set():
+            if stop_flag.is_set():
                 logger.error("Controller thread stopped")
                 killit = True
             for k,v in threads.items():
                 if not v.is_alive():
                     logger.error(f"Thread {k} stopped running. Exiting application")
                     killit = True
-                else:
-                    logger.info(f"Thread {k} still alive")
             
             if killit:
                 logger.error("Shutting down due to error")
