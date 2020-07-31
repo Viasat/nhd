@@ -11,6 +11,7 @@ from nhd.NHDCommon import NHDCommon
 from nhd.NHDScheduler import NHD_SCHED_NAME
 import kopf
 import yaml
+import os
 
 
 @kopf.on.startup()
@@ -117,6 +118,12 @@ def TriadPodDelete(spec, meta, **_):
     k8sq = qinst # Get the watch queue so we can notify NHD of events from the controller
     k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE, "pod": {"ns": meta["namespace"], "name": meta["name"]}})        
 
+def HandleExceptions(loop, context):
+    logger = NHDCommon.GetLogger(__name__)   
+    msg = context.get("exception", context["message"])
+    logger.error(f"Caught exception: {msg}")
+    logger.info("Shutting down...")
+    os._exit(-1) # Kill entire application and let k8s restart it. No state needs to be preserved
 
 
 # DO NOT DEFINE on.update! It's handled elsewhere
@@ -131,6 +138,7 @@ def TriadControllerLoop(
 
         kopf.configure(verbose=False)  # log formatting
 
+        loop.set_exception_handler(HandleExceptions)
         loop.run_until_complete(kopf.operator(
             ready_flag=ready_flag,
             stop_flag=stop_flag,
