@@ -336,6 +336,7 @@ class NHDScheduler(threading.Thread):
         """
         nodes = []
         for k,v in self.nodes.items():
+            self.logger.info(f"Getting info for node {k}")
             nodeinfo = {
                 'name': k,
                 'freegpu': v.GetFreeGpuCount(),
@@ -350,6 +351,7 @@ class NHDScheduler(threading.Thread):
 
             nodes.append(nodeinfo)
 
+        self.logger.info("Done getting node info")
         return nodes
 
     def GetPodStats(self):
