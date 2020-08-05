@@ -230,7 +230,7 @@ class K8SMgr:
         pods = {}        
         try:
             ret = self.v1.list_pod_for_all_namespaces()
-        except kubernetes.client.rest.ApiException as e:
+        except ApiException as e:
             self.logger.error("Failed to connect to Kubernetes")
             return pods
 
