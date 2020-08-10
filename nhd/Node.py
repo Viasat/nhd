@@ -487,7 +487,7 @@ class Node:
         
 
 
-    def RemoveResourcesFromTopology(self, top):
+    def RemoveResourcesFromTopology(self, top) -> bool:
         """ Remove resources from a node that are present in a topology structure. """
 
         for pv in top.proc_groups:
@@ -497,9 +497,13 @@ class Node:
                 self.cores[m.core].used = True
 
             for m in pv.proc_cores:
-                if self.cores[m.core].used:
-                    self.logger.error(f'Processing group core {m.core} was already in use!')
-                self.cores[m.core].used = True
+                try:
+                    if self.cores[m.core].used:
+                        self.logger.error(f'Processing group core {m.core} was already in use!')
+                    self.cores[m.core].used = True
+                except IndexError as e:
+                    self.logger.error(f"Failed to get core at index {m.core} when size is {len(self.cores)}")
+                    return False
 
             for g in pv.group_gpus:
                 dev = self.GetGPU(g.device_id)
@@ -538,6 +542,7 @@ class Node:
             self.mem.free_hugepages_gb -= top.hugepages_gb    
             self.logger.info(f'Taking {top.hugepages_gb} 1GB hugepages from node. {self.mem.free_hugepages_gb} remaining')                  
 
+        return True
 
     def AddResourcesFromTopology(self, top):
         """ Add resources from a node that are present in a topology structure. """

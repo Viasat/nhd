@@ -127,7 +127,9 @@ class NHDScheduler(threading.Thread):
 
             # Passed all the tests. Now remove the resources from the cluster
             self.logger.info(f'Taking node resources from {n}')
-            self.nodes[n].RemoveResourcesFromTopology(top)
+            if not self.nodes[n].RemoveResourcesFromTopology(top):
+                self.logger.error("Failed removing resources")
+                return
 
             # (alloc, free) = self.k8s.GetNodeHugepageResources(n) 
             # if not self.nodes[n].SetHugepages(alloc, free):
