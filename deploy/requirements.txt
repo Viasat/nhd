@@ -5,5 +5,5 @@ libconf>=2.0.0
 magicattr>=0.1.4
 wheel
 grpcio-tools==1.27.2
-kopf==0.27rc6
+kopf==0.28
 
