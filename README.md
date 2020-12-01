@@ -24,7 +24,7 @@ NHD is a topology-aware custom scheduler used for Kubernetes. The scheduler is a
 * Kubecon talk: https://www.youtube.com/watch?v=8N8vErJmzdc
 
 ## Requirements
-* Python 3.7 or higher
+* Python 3.8 or higher
 * libconfig 2.0.0
 * magicattr
 * Official Kubernetes Python API (https://github.com/kubernetes-client/python)
