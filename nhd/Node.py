@@ -134,6 +134,10 @@ class Node:
 
         self.pod_info.clear()
 
+    def GetNodeActive(self):
+        """ Gets the active state for a node """
+        return self.active
+
     def GetTotalHugepages(self):
         """ Gets the total hugepages for a node """
         return self.mem.ttl_hugepages_gb

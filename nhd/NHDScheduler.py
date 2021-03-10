@@ -163,7 +163,8 @@ class NHDScheduler(threading.Thread):
             if p[2] in ('Running', 'CrashLoopBackOff', 'Pending'):
                 self.logger.info(f'Reclaiming resources for pod {p[1]}.{p[0]}')
                 self.ClaimPodResources(p[0], p[1])
-
+            else:
+                self.logger.info(f'Pod {p[1]}.{p[0]} is in state: {p[2]}')
 
     def ReleasePodResources(self, podname, ns):
         """ Releases resources consumed by a pod that's completed or errored """
@@ -348,6 +349,7 @@ class NHDScheduler(threading.Thread):
                 'freehuge_gb': v.GetFreeHugepages(),
                 'totalhuge_gb': v.GetTotalHugepages(),
                 'totalpods': v.GetTotalPods(),
+                'active': v.GetNodeActive(),
                 'nicstats': v.GetNICUsedSpeeds()
             }
 

@@ -26,6 +26,7 @@ message NodeInfo {
     uint32 used_hugepages = 7;
     uint32 total_pods = 8;
     repeated NICInfoBrief nic_info = 9;
+    bool active = 10;
 }
 
 message NodeStats {
