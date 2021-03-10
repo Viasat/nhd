@@ -66,11 +66,12 @@ class NHDRpcHandler(nhd_stats_pb2_grpc.NHDControlServicer):
                 tmpnode.used_gpus   = n['totalgpu'] - n['freegpu']
                 tmpnode.free_hugepages = n['freehuge_gb']
                 tmpnode.used_hugepages = n['totalhuge_gb'] - n['freehuge_gb']     
-                tmpnode.total_pods  = n['totalpods']    
+                tmpnode.total_pods  = n['totalpods']
                 for nic in n['nicstats']:
                     nicinfo  = tmpnode.nic_info.add()                    
                     nicinfo.used_rx = nic[0]
                     nicinfo.used_tx = nic[1]
+                tmpnode.active      = n['active']
 
         except Empty as e:
             self.logger.error(f'Failed to get a response from NHD scheduler for Node stats query: {e}')
