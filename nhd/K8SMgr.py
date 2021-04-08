@@ -358,6 +358,7 @@ class K8SMgr:
                 self.logger.error(f'No ConfigMap found for pod {pod}')
                 return (None,None)
 
+        self.logger.error(f'No ConfigMap found for {namespace}')
         return (None,None)
 
     def AnnotatePodConfig(self, ns, podname, configstr):
