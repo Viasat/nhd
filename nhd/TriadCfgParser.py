@@ -343,8 +343,6 @@ class TriadCfgParser(CfgParser):
 
         self.logger.info('Found topology section in config')
 
-        top = CfgTopology()
-
         if not self.CheckMandatoryFields():
             self.logger.error('Not all mandatory fields in config present. Bailing')
             return None
