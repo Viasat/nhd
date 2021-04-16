@@ -3,6 +3,7 @@ import copy
 import itertools
 import math
 import os
+import time
 from colorlog import ColoredFormatter
 from collections import defaultdict
 from nhd.Node import Node
@@ -12,6 +13,7 @@ from nhd.CfgTopology import TopologyMapType
 from nhd.CfgTopology import CfgTopology
 from typing import Dict, List
 
+MIN_DEPLOY_SECS = 15
 
 """ 
 The Matcher class attempts to find the best pairing of a Node to a CfgTopology, if one exists. This
@@ -21,6 +23,9 @@ class Matcher:
     def __init__(self):
         self.logger = NHDCommon.GetLogger(__name__)
         self.logger.info('Initializing matcher')
+        # Dictionary to track the last time a pod was deployed to each node
+        # Key: Node Name, value: monotonic seconds
+        self.deploy_time: Dict[str, float] = {}
 
 
     def FindNode(self, nl, top) -> str:
@@ -57,7 +62,10 @@ class Matcher:
             if node == '':
                 self.logger.error('NUMA intersection step left no candidate nodes. Cannot schedule pod!')
                 return (None,)
-                
+
+            # Node has been selected.  Record time of selection
+            self.deploy_time[node] = time.monotonic()                
+
             midx = self.GetNumaGroupIdx(node, nl[node].numa_nodes, filts)
             return node, midx
         
@@ -96,6 +104,19 @@ class Matcher:
 
         gpu_cands = {}
         for n,v in nl.items():
+
+            # GPU pods are real-time and can be momentarily disrupted when additional pods are assigned to the same node,
+            # especially when many pods are assigned at the same time.  To minimize this impact, we only assign a pod
+            # to a node every few seconds.  So, if this new pod requires GPU resources, then make sure there is 
+            # sufficient idle time since last deployment.
+            if sum(req_gpus) > 0:
+                if n in self.deploy_time:
+                    secs_since_last_deploy = time.monotonic() - self.deploy_time[n]
+                    if secs_since_last_deploy < MIN_DEPLOY_SECS:
+                        self.logger.info(f'Dropping node {n} from candidate list beacause last deploy was only {int(secs_since_last_deploy)} seconds ago)')
+                        cand_nodes.remove(n)
+                        continue
+
             stmp = set()
             self.logger.info(f'Checking node {n} for enough free GPUs')
             free_gpus = v.GetFreeNumaGPUs()
