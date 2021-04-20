@@ -260,10 +260,13 @@ class Node:
         ninfo = [[] for _ in range(self.numa_nodes)]
 
         for n in self.nics:
-            if ENABLE_SHARING:
-                ninfo[n.numa_node].append([n.speed*NIC_BW_AVAIL_PERCENT - n.speed_used[x] for x in range(2)])
-            else:
-                ninfo[n.numa_node].append([0 if (n.pods_used > 0) else n.speed*NIC_BW_AVAIL_PERCENT for x in range(2)])
+            try:
+                if ENABLE_SHARING:
+                    ninfo[n.numa_node].append([n.speed*NIC_BW_AVAIL_PERCENT - n.speed_used[x] for x in range(2)])
+                else:
+                    ninfo[n.numa_node].append([0 if (n.pods_used > 0) else n.speed*NIC_BW_AVAIL_PERCENT for x in range(2)])
+            except IndexError:
+                self.logger.warning(f'Node {self.name}, NIC {n.mac} has unexpected NUMA node {n.numa_node} of {self.numa_nodes}')  
 
         return ninfo
 
