@@ -15,8 +15,6 @@ class NHDCommon:
                     'ERROR': 'bold_red',
                     'CRITICAL': 'bold_red' }             
 
-    NHD_MAINT_LABEL = 'sigproc.viasat.io/maintenance'
-
     @staticmethod
     def GetLogger(name):
         l = logging.getLogger(name)
