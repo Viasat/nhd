@@ -79,6 +79,11 @@ class Matcher:
         filtnodes = {}
 
         for k,v in nl.items():
+            # Check if node is currently in maintenance
+            if v.maintenance:
+                self.logger.info(f'Node {k} in maintenance. Removing node...')
+                continue
+
             # Filter hugepages
             if top.hugepages_gb > v.mem.free_hugepages_gb:
                 self.logger.info(f'Node {k} only has {v.mem.free_hugepages_gb} free 1GB hugepages free, but pod needs {top.hugepages_gb}. Removing node...')

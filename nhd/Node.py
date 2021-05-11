@@ -95,6 +95,9 @@ The Node class holds properties about a node's resources, as well as which resou
 Current resource types in a node are CPUs, GPU, and NICs.
 """
 class Node:
+
+    NHD_MAINT_LABEL = 'sigproc.viasat.io/maintenance'
+
     def __init__(self, name, active = True):
         self.logger = NHDCommon.GetLogger(__name__)
 
@@ -107,6 +110,7 @@ class Node:
         self.sockets = 0
         self.numa_nodes = 0 
         self.smt_enabled = False
+        self.maintenance = False
         self.cores_per_proc = 0
         self.pod_info = {}
         self.data_vlan = 0
@@ -114,6 +118,16 @@ class Node:
         self.gwip : str = '0.0.0.0/32'
         self.mem: NodeMemory = NodeMemory()
         self.reserved_cores = [] # Reserved CPU cores
+
+    def GetMaintenance(labels):
+        maintenance = False
+        if (Node.NHD_MAINT_LABEL in labels):
+            value = labels[Node.NHD_MAINT_LABEL].lower()
+            if (value != 'not_scheduled'):
+                maintenance = True
+
+        return maintenance
+
 
     def ResetResources(self):
         """ Resets all resources back to initial values """
@@ -296,6 +310,10 @@ class Node:
 
         return True    
 
+    def InitMaintenance(self, labels):
+        self.maintenance = Node.GetMaintenance(labels)
+        return True    
+
     def InitCores(self, labels):
         """ Initialize the CPU resouces based on the node labels """
         if not ('feature.node.kubernetes.io/nfd-extras-cpu.num_cores' in labels and 'feature.node.kubernetes.io/nfd-extras-cpu.numSockets' in labels):
@@ -435,6 +453,9 @@ class Node:
 
     def ParseLabels(self, labels):
         if not self.InitGroups(labels):
+            return False
+
+        if not self.InitMaintenance(labels):
             return False
 
         if not self.InitCores(labels):
