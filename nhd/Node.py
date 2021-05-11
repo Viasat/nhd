@@ -107,6 +107,7 @@ class Node:
         self.sockets = 0
         self.numa_nodes = 0 
         self.smt_enabled = False
+        self.maintenance = False
         self.cores_per_proc = 0
         self.pod_info = {}
         self.data_vlan = 0
@@ -296,6 +297,15 @@ class Node:
 
         return True    
 
+    def InitMaintenance(self, labels):
+        self.maintenance = False
+        if (NHDCommon.NHD_MAINT_LABEL in labels):
+            value = labels[NHDCommon.NHD_MAINT_LABEL].lower()
+            if (value != 'no'):
+                self.maintenance = True
+    
+        return True    
+
     def InitCores(self, labels):
         """ Initialize the CPU resouces based on the node labels """
         if not ('feature.node.kubernetes.io/nfd-extras-cpu.num_cores' in labels and 'feature.node.kubernetes.io/nfd-extras-cpu.numSockets' in labels):
@@ -435,6 +445,9 @@ class Node:
 
     def ParseLabels(self, labels):
         if not self.InitGroups(labels):
+            return False
+
+        if not self.InitMaintenance(labels):
             return False
 
         if not self.InitCores(labels):

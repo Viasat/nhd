@@ -522,6 +522,23 @@ class NHDScheduler(threading.Thread):
                                 v.active = True
 
                         break
+
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_START:
+                for n,v in self.nodes.items():
+                    if n == item["node"]:
+                        if not v.maintenance:
+                            self.logger.info(f'Node {item["node"]} entering maintenance')   
+                            v.maintenance = True
+                        break
+
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_END:
+                for n,v in self.nodes.items():
+                    if n == item["node"]:
+                        if v.maintenance:
+                            self.logger.info(f'Node {item["node"]} leaving maintenance')   
+                            v.maintenance = False
+                        break
+
             elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE:
                 self.logger.info(f'Updating NHD group to {item["groups"]} for node {item["node"]}')  
                 for n,v in self.nodes.items():

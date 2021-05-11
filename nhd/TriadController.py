@@ -34,6 +34,15 @@ def delete_fn(meta, **_):
     logger = NHDCommon.GetLogger(__name__)
     logger.info('Received delete request for TriadSet')
 
+def GetMaintenance(labels):
+    maintenance = False
+    if (NHDCommon.NHD_MAINT_LABEL in labels):
+        value = labels[NHDCommon.NHD_MAINT_LABEL].lower()
+        if (value != 'no'):
+            maintenance = True
+
+    return maintenance
+
 
 # Dete node changes to determine if a node is cordoned and/or the NHD group label is changing
 @kopf.on.update('', 'v1', 'nodes')
@@ -60,6 +69,17 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
 
        logger.info(f'Updating NHD group for node {meta["name"]} to default')
        k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_GROUP_UPDATE, "node": meta["name"], "groups" : "default"})
+
+    # Detect change in node maintenance state
+    oldMaintenance = GetMaintenance(old['metadata']['labels'])
+    newMaintenance = GetMaintenance(new['metadata']['labels'])
+    if (not oldMaintenance and newMaintenance):
+        logger.info(f'Starting Maintenance for node {meta["name"]}')
+        k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_START, "node": meta["name"]})
+    elif (oldMaintenance and not newMaintenance):
+        logger.info(f'Ending Maintenance for node {meta["name"]}')
+        k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_END, "node": meta["name"]})
+
 
 # Timer acting as the TriadSet controller. Pods under the set are only created here either by a new set appearing, or an
 # existing pod being deleted.
