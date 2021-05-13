@@ -41,7 +41,11 @@ def delete_fn(meta, **_):
 @kopf.on.update('', 'v1', 'nodes')
 def TriadNodeUpdate(spec, old, new, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
-    NHDTainted = lambda obj: any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
+    try:
+        NHDTainted = lambda obj: any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
+    except KeyError as e:
+        logger.error(f'Unable to find node taints - node {meta["name"]} update aborted - {e}')
+        return
 
     k8sq = qinst
     # If the NHD taint has been added/removed or the code has been cordoned/uncordoned, detect it here
@@ -80,36 +84,34 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
 async def MonitorTriadSets(spec, meta, **kwargs):
     logger = NHDCommon.GetLogger(__name__)
 
-    nhd_lock = NHDLock.GetInstance()
-    with nhd_lock.GetLock():
-        logger.debug(f'Kicking off controller timer for {meta["namespace"]}/{meta["name"]}')
+    logger.debug(f'Kicking off controller timer for {meta["namespace"]}/{meta["name"]}')
+    try:
+        config.load_incluster_config()
+    except:
+        config.load_kube_config()
+
+    v1 = client.CoreV1Api()
+
+    for ord in range(spec['replicas']):
+        podname = f'{spec["serviceName"]}-{ord}'
         try:
-            config.load_incluster_config()
-        except:
-            config.load_kube_config()
-
-        v1 = client.CoreV1Api()
-
-        for ord in range(spec['replicas']):
-            podname = f'{spec["serviceName"]}-{ord}'
-            try:
-                _ = v1.read_namespaced_pod(name = podname, namespace = meta["namespace"])
-            except ApiException as e:
-                logger.info(f'Triad pod {podname} not found in namespace {meta["namespace"]}, but TriadSet is still active. Restarting pod')
-                podspec = yaml.dump(spec["template"])
+            _ = v1.read_namespaced_pod(name = podname, namespace = meta["namespace"])
+        except ApiException as e:
+            logger.info(f'Triad pod {podname} not found in namespace {meta["namespace"]}, but TriadSet is still active. Restarting pod')
+            podspec = yaml.dump(spec["template"])
             
-                # Indent the pod spec to line up with the rest of the yaml
-                podspec = f"apiVersion: v1\nkind: Pod\n{podspec}"
+            # Indent the pod spec to line up with the rest of the yaml
+            podspec = f"apiVersion: v1\nkind: Pod\n{podspec}"
 
-                # Reload the yaml to patch some fields
-                podyaml = yaml.safe_load(podspec)
-                podyaml['metadata']['name'] = podname # Give it the canonical statefulset-type name
+            # Reload the yaml to patch some fields
+            podyaml = yaml.safe_load(podspec)
+            podyaml['metadata']['name'] = podname # Give it the canonical statefulset-type name
 
-                # Patch in the hostname and subdomain to create a DNS record like a statefulset
-                podyaml['spec']['hostname']  = podname
-                podyaml['spec']['subdomain'] = meta["name"]
-                kopf.adopt(podyaml)
-                obj = v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
+            # Patch in the hostname and subdomain to create a DNS record like a statefulset
+            podyaml['spec']['hostname']  = podname
+            podyaml['spec']['subdomain'] = meta["name"]
+            kopf.adopt(podyaml)
+            _ = v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
 
 
 # Triad pod being created
