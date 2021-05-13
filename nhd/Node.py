@@ -700,7 +700,7 @@ class Node:
                         # If we can't find a free GPU for this NIC, and we're in PCI mode, then something went wrong. We need to bail out.
                         if top.map_type == TopologyMapType.TOPOLOGY_MAP_PCI: 
                             self.logger.error(f'Couldn\'t find a free GPU for NIC PCI switch in PCI mode for switch {nobj.pciesw}! Bailing out: {nicinfo}')
-                            return None
+                            raise IndexError
                         else:
                             # Just get the next free GPU we can find since there's not one free on the same PCI switch
                             gdev = self.GetNextGpuFree(group_numa_node)
@@ -718,12 +718,14 @@ class Node:
                     for gpu_cpu in gv.cpu_cores:
                         gpu_cpu.core = group_cpus[cidx]
                         self.cores[gpu_cpu.core].used = True
+                        used_cpus.append(gpu_cpu.core)
                         cidx += 1
 
                 # Assign processing cores
                 for groupi, groupc in enumerate(pv.proc_cores):
                     groupc.core = group_cpus[cidx]
                     self.cores[groupc.core].used = True
+                    used_cpus.append(groupc.core)
                     cidx += 1
 
                     # Check if this core is using NIC resources
@@ -756,8 +758,6 @@ class Node:
                     self.logger.info('Still have {len(group_cpus) - cidx} leftover CPUs in request list!')
                     raise IndexError
                 
-                used_cpus.extend(group_cpus)
-
 
                 # Assign the helper cores
                 helper_req = self.GetFreeCpuBatch(group_numa_node, len(pv.misc_cores), pv.helper_smt)
@@ -765,19 +765,18 @@ class Node:
                 cidx = 0
                 if len(pv.misc_cores) != len(helper_req):
                     self.logger.error(f'Asked for {len(pv.misc_cores)} free helper CPUs, but only got {len(helper_req)} back!')
-                    return None
+                    raise IndexError
 
                 for hc in pv.misc_cores:
                     hc.core = helper_req[cidx]
                     self.cores[hc.core].used = True
+                    used_cpus.append(hc.core)
                     cidx += 1
 
                 if cidx != len(helper_req):
                     self.logger.info('Still have {len(helper_req) - cidx} leftover helper CPUs in request list!')
-                    return None
+                    raise IndexError
                     
-                used_cpus.extend(helper_req)
-
             # Set data plane default GWs
             top.SetDataDefaultGw(self.gwip)
 
@@ -793,18 +792,17 @@ class Node:
             cidx = 0
             if len(top.misc_cores) != len(misc_cpus):
                 self.logger.error(f'Asked for {top.misc_cores} free helper CPUs, but only got {len(misc_cpus)} back!')
-                return None
+                raise IndexError
 
             for mc in top.misc_cores:
                 mc.core = misc_cpus[cidx]
                 self.cores[mc.core].used = True
+                used_cpus.append(mc.core)
                 cidx += 1
 
             if cidx != len(misc_cpus):
                 self.logger.info('Still have {len(misc_cpus) - cidx} leftover helper CPUs in request list!')
-                return None
-
-            used_cpus.extend(misc_cpus)
+                raise IndexError
 
             self.logger.info(f'Setting control VLAN to {self.data_vlan}')
             top.ctrl_vlan.vlan = self.data_vlan
