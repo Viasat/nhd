@@ -37,7 +37,6 @@ class K8SMgr:
         """
         self.logger = NHDCommon.GetLogger(__name__)
 
-        #config.load_incluster_config()
         if K8SMgr.__instance != None:
             raise Exception("Cannot create more than one K8SMgr!")
         else:
@@ -209,6 +208,7 @@ class K8SMgr:
 
         return pods
 
+
     def GetRequestedPodResources(self, pod: str, ns: str) -> Dict[str, str]:
         """
         Get the pod resources in dict format
@@ -222,7 +222,6 @@ class K8SMgr:
             self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)
 
         return {}
-
 
 
     def ServicePods(self, sched_name):
@@ -480,6 +479,7 @@ class K8SMgr:
 
         return True
 
+    # JVM: this should call GetPodAnnotations() as does GetCfgAnnotations()
     def GetCfgType(self, pod: str, ns: str) -> str:
         """
         Gets the configuration type from the pod's annotations

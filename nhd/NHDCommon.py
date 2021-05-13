@@ -2,6 +2,8 @@ import logging
 from colorlog import ColoredFormatter
 import os
 from enum import Enum
+import threading
+
 
 """
 Common class for all NHD functions.
@@ -34,7 +36,35 @@ class NHDCommon:
             ch.setFormatter(f)
             l.addHandler(ch)
 
-        return l         
+        return l
+
+
+class NHDLock():
+    __instance = None
+
+    @staticmethod
+    def GetInstance():
+        if NHDLock.__instance == None:
+            NHDLock()
+    
+        return NHDLock.__instance
+
+
+    def __init__(self):
+        """
+        Initializes 'system-wide' semaphore
+        """
+        if NHDLock.__instance != None:
+            raise Exception("Cannot create more than one NHDLock!")
+        else:
+            self.lock = threading.Lock()
+
+            NHDLock.__instance = self
+
+
+    def GetLock(self):
+        return self.lock 
+
 
 class RpcMsgType(Enum):
     TYPE_NODE_INFO = 1     
