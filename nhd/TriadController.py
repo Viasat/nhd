@@ -8,6 +8,7 @@ from kubernetes.client.rest import ApiException
 from nhd.NHDWatchQueue import qinst
 from nhd.NHDWatchQueue import NHDWatchTypes
 from nhd.NHDCommon import NHDCommon
+from nhd.NHDCommon import NHDLock
 from nhd.NHDScheduler import NHD_SCHED_NAME
 from nhd.Node import Node
 import kopf
@@ -36,7 +37,7 @@ def delete_fn(meta, **_):
     logger.info('Received delete request for TriadSet')
 
 
-# Dete node changes to determine if a node is cordoned and/or the NHD group label is changing
+# Detect node changes to determine if a node is cordoned and/or the NHD group label is changing
 @kopf.on.update('', 'v1', 'nodes')
 def TriadNodeUpdate(spec, old, new, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
@@ -78,34 +79,37 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
 @kopf.timer('sigproc.viasat.io', 'v1', 'triadsets', interval = 3.0, idle = 3.0)
 async def MonitorTriadSets(spec, meta, **kwargs):
     logger = NHDCommon.GetLogger(__name__)
-    logger.debug(f'Kicking off controller timer for {meta["namespace"]}/{meta["name"]}')
-    try:
-        config.load_incluster_config()
-    except:
-        config.load_kube_config()
 
-    v1   = client.CoreV1Api()        
-
-    for ord in range(spec['replicas']):
-        podname = f'{spec["serviceName"]}-{ord}'
+    nhd_lock = NHDLock.GetInstance()
+    with nhd_lock.GetLock():
+        logger.debug(f'Kicking off controller timer for {meta["namespace"]}/{meta["name"]}')
         try:
-            p = v1.read_namespaced_pod(name = podname, namespace = meta["namespace"])
-        except ApiException as e:
-            logger.info(f'Triad pod {podname} not found in namespace {meta["namespace"]}, but TriadSet is still active. Restarting pod')
-            podspec = yaml.dump(spec["template"])
+            config.load_incluster_config()
+        except:
+            config.load_kube_config()
+
+        v1 = client.CoreV1Api()
+
+        for ord in range(spec['replicas']):
+            podname = f'{spec["serviceName"]}-{ord}'
+            try:
+                _ = v1.read_namespaced_pod(name = podname, namespace = meta["namespace"])
+            except ApiException as e:
+                logger.info(f'Triad pod {podname} not found in namespace {meta["namespace"]}, but TriadSet is still active. Restarting pod')
+                podspec = yaml.dump(spec["template"])
             
-            # Indent the pod spec to line up with the rest of the yaml
-            podspec = f"apiVersion: v1\nkind: Pod\n{podspec}"
+                # Indent the pod spec to line up with the rest of the yaml
+                podspec = f"apiVersion: v1\nkind: Pod\n{podspec}"
 
-            # Reload the yaml to patch some fields
-            podyaml = yaml.safe_load(podspec)                
-            podyaml['metadata']['name'] = podname # Give it the canonical statefulset-type name
+                # Reload the yaml to patch some fields
+                podyaml = yaml.safe_load(podspec)
+                podyaml['metadata']['name'] = podname # Give it the canonical statefulset-type name
 
-            # Patch in the hostname and subdomain to create a DNS record like a statefulset
-            podyaml['spec']['hostname']  = podname
-            podyaml['spec']['subdomain'] = meta["name"]
-            kopf.adopt(podyaml)
-            obj = v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
+                # Patch in the hostname and subdomain to create a DNS record like a statefulset
+                podyaml['spec']['hostname']  = podname
+                podyaml['spec']['subdomain'] = meta["name"]
+                kopf.adopt(podyaml)
+                obj = v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
 
 
 # Triad pod being created

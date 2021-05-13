@@ -7,6 +7,7 @@ import pkg_resources
 import sys
 import time
 from nhd.NHDCommon import NHDCommon
+from nhd.NHDCommon import NHDLock
 from nhd.NHDScheduler import NHDScheduler
 from nhd.NHDRpcServer import NHDRpcServer
 from queue import Queue
@@ -21,6 +22,9 @@ if __name__ == "__main__":
 
     # Initialize shared queue
     k8sq = qinst.size()
+
+    # Initialize shared semaphore
+    nhd_lock = NHDLock.GetInstance()
   
 
     try:
