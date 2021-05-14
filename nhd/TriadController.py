@@ -41,11 +41,16 @@ def delete_fn(meta, **_):
 @kopf.on.update('', 'v1', 'nodes')
 def TriadNodeUpdate(spec, old, new, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
-    try:
-        NHDTainted = lambda obj: any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
-    except KeyError as e:
-        logger.error(f'Unable to find node taints - node {meta["name"]} update aborted - {e}')
-        return
+    def find_taint(obj, meta):
+        found = False
+        try:
+            found = any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
+        except KeyError as e:
+            logger.error(f'Unable to find node taints - node {meta["name"]} update aborted - {e}')
+
+        return found
+
+    NHDTainted = lambda obj: find_taint(obj, meta)
 
     k8sq = qinst
     # If the NHD taint has been added/removed or the code has been cordoned/uncordoned, detect it here
@@ -111,7 +116,7 @@ async def MonitorTriadSets(spec, meta, **kwargs):
             podyaml['spec']['hostname']  = podname
             podyaml['spec']['subdomain'] = meta["name"]
             kopf.adopt(podyaml)
-            _ = v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
+            _= v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
 
 
 # Triad pod being created
