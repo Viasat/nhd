@@ -205,7 +205,7 @@ class K8SMgr:
 
         for i in ret.items:
             if i.spec.scheduler_name == sched_name:
-                pods.append((i.metadata.name, i.metadata.namespace, i.status.phase))
+                pods.append((i.metadata.name, i.metadata.namespace, i.metadata.uid, i.status.phase))
 
         return pods
 
@@ -529,7 +529,6 @@ class K8SMgr:
                 lg = self.logger.warning
 
             timestamp = self.GetTimeNow()
-
 
             # Log an event in our pod too instead of duplicating externally
             lg(f'Event for pod {ns}/{podname} -- Reason={reason}, message={message}')
