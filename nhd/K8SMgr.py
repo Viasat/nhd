@@ -131,15 +131,16 @@ class K8SMgr:
 
     def GetCfgAnnotations(self, pod, ns):
         """ Get the config annotations from the pod """
-        try: 
+        k = 'sigproc.viasat.io/nhd_config'
+        try:
             annot = self.GetPodAnnotations(ns, pod)
-            if annot == None or 'sigproc.viasat.io/nhd_config' not in annot:
+            if annot == None:
                 self.logger.error(f'Couldn\'t find pod annotations for pod {ns}.{pod}')
                 return False
 
-            return annot['sigproc.viasat.io/nhd_config']
-        except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)          
+            return annot[k]
+        except KeyError as e:
+            self.logger.error(f'Key [{e}] not found in pod annotations for {ns}.{pod}')          
         
         return False
 
@@ -189,10 +190,10 @@ class K8SMgr:
             p = self.v1.read_namespaced_pod(podname, ns)
             return p.metadata.annotations
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)    
-            return None 
+            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)
+            return None
 
-        return None       
+        return None
 
 
     def GetScheduledPods(self, sched_name):
@@ -204,7 +205,7 @@ class K8SMgr:
 
         for i in ret.items:
             if i.spec.scheduler_name == sched_name:
-                pods.append((i.metadata.name, i.metadata.namespace, i.status.phase))
+                pods.append((i.metadata.name, i.metadata.namespace, i.metadata.uid, i.status.phase))
 
         return pods
 
@@ -479,22 +480,22 @@ class K8SMgr:
 
         return True
 
-    # JVM: this should call GetPodAnnotations() as does GetCfgAnnotations()
     def GetCfgType(self, pod: str, ns: str) -> str:
         """
         Gets the configuration type from the pod's annotations
         """
+        k = 'sigproc.viasat.io/cfg_type'
         try:
-            ret = self.v1.read_namespaced_pod(pod, ns)
-            # Verify all annotations are present
-            ann = ret.metadata.annotations     
-            return ann['sigproc.viasat.io/cfg_type']   
+            annot = self.GetPodAnnotations(ns, pod)
+            if annot == None:
+                self.logger.error(f'Couldn\'t find pod annotations for pod {ns}.{pod}')
+                return ''
+
+            return annot[k]
         except KeyError as e:
-            self.logger.error('Key error when fetching namespaced pod')
+            self.logger.error(f'Key [{e}] not found in pod annotations for {ns}.{pod}')
             return ''
-        except ApiException as e:
-            self.logger.error(f'API exception when fetching namespaced pod: {ns}.{pod}: {e}')
-            return ''
+
 
     def GetTimeNow(self) -> str:
         """ Uses Kubernetes undocumented format. Any deviation from this will throw an error at the API server """
@@ -528,7 +529,6 @@ class K8SMgr:
                 lg = self.logger.warning
 
             timestamp = self.GetTimeNow()
-
 
             # Log an event in our pod too instead of duplicating externally
             lg(f'Event for pod {ns}/{podname} -- Reason={reason}, message={message}')

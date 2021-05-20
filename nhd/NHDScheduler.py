@@ -104,7 +104,7 @@ class NHDScheduler(threading.Thread):
 
         self.logger.info("Done building initial node list")
 
-    def ClaimPodResources(self, podname, ns):
+    def ClaimPodResources(self, podname, ns, uid):
         """ Claims any pod resources from a given pod's configmap. This will remove any physical node resources consumed
             by the pod from being scheduled by other pods. """
         cfgstr = self.k8s.GetCfgAnnotations(podname, ns)
@@ -141,7 +141,7 @@ class NHDScheduler(threading.Thread):
             #     self.logger.error(f'Error while parsing allocatable resources for node {n}')
 
             self.nodes[n].AddScheduledPod(podname, ns, top)
-            self.pod_state[(ns, podname)] = {'state': PodStatus.POD_STATUS_SCHEDULED, 'time': time.time()}
+            self.pod_state[(ns, podname)] = {'state': PodStatus.POD_STATUS_SCHEDULED, 'time': time.time(), 'uid': uid}
 
     def ResetResources(self):
         """ Resets all known resources to those that have already been deployed. Useful when deployed resources
@@ -159,17 +159,17 @@ class NHDScheduler(threading.Thread):
         self.PrintAllNodeResources()
     
     def LoadDeployedConfigs(self):
-        """ Loads any configs that were already deployed by this scheduler to be add as a used resource. This typically
-            happens when NHD is restarted after pods have been deployed. """
+        """ Loads any configs that were already deployed by this scheduler to be add as a used resource.
+            This typically happens when NHD is restarted after pods have been deployed. """
         self.logger.info('Looking for any pods already deployed with used resources')
         pods = self.k8s.GetScheduledPods(self.sched_name)
         self.logger.info(f'Found scheduled pods: {pods}')
         for p in pods:
-            if p[2] in ('Running', 'CrashLoopBackOff', 'Pending'):
+            if p[3] in ('Running', 'CrashLoopBackOff', 'Pending'):
                 self.logger.info(f'Reclaiming resources for pod {p[1]}.{p[0]}')
-                self.ClaimPodResources(p[0], p[1])
+                self.ClaimPodResources(p[0], p[1], p[2])
             else:
-                self.logger.info(f'Pod {p[1]}.{p[0]} is in state: {p[2]}')
+                self.logger.info(f'Pod {p[1]}.{p[0]} is in state: {p[3]}')
 
     def ReleasePodResources(self, podname, ns):
         """ Releases resources consumed by a pod that's completed or errored """
@@ -407,25 +407,25 @@ class NHDScheduler(threading.Thread):
             q.put(rsp)
         elif msgid == RpcMsgType.TYPE_POD_INFO:
             rsp = self.GetPodStats()
-            q.put(rsp) 
+            q.put(rsp)
 
     def CheckPendingPods(self):
         podlist = self.k8s.ServicePods(self.sched_name)        
         for k, p in podlist.items():
             podkey = (k[0], k[1])
             if p[0] == 'Pending' and p[1] == None and ((podkey not in self.pod_state) or self.pod_state[podkey]['state'] != PodStatus.POD_STATUS_SCHEDULED):  
-                self.logger.info(f'Found new pending pod {k[0]}.{k[1]}[{k[2]}]')
+                self.logger.info(f'Found new pending pod {k[0]}.{k[1]} [{k[2]}]')
                 # Normal pod that needs to be scheduled
-                if not self.AttemptScheduling(k[1], k[0]):
-                    self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]}[{k[2]}]')
-                    self.pod_state[podkey] = {'state': PodStatus.POD_STATUS_FAILED, 'time': 0}
+                if self.AttemptScheduling(k[1], k[0]):
+                    self.pod_state[podkey] = {'state': PodStatus.POD_STATUS_SCHEDULED, 'time': time.time(), 'uid': k[2]}
                 else:
-                    self.pod_state[podkey] = {'state': PodStatus.POD_STATUS_SCHEDULED, 'time': time.time()}
+                    self.logger.error(f'Failed scheduling pod {k[0]}.{k[1]} [{k[2]}]')
+                    self.pod_state[podkey] = {'state': PodStatus.POD_STATUS_FAILED, 'time': time.time(), 'uid': '0'}
 
             elif (p[0] == 'Failed') and (podkey in self.pod_state) and (self.pod_state[podkey] == PodStatus.POD_STATUS_SCHEDULED):
-                self.logger.info(f'Pod {k[0]}.{k[1]}[{k[2]}] failed to schedule. Removing consumed resources')
+                self.logger.info(f'Pod {k[0]}.{k[1]} [{k[2]}] failed to schedule. Removing consumed resources')
                 self.ReleasePodResources(k[1], k[0])
-                self.pod_state[podkey] = {'state': PodStatus.POD_STATUS_FAILED, 'time': time.time()}       
+                self.pod_state[podkey] = {'state': PodStatus.POD_STATUS_FAILED, 'time': time.time(), 'uid': '0'}
 
     def run(self):
         """ 
@@ -478,39 +478,44 @@ class NHDScheduler(threading.Thread):
             # Pod creation/deletion events
             if item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE,
                                 NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE):
-                pn = item["pod"]["name"]
                 ns = item["pod"]["ns"]
+                pn = item["pod"]["name"]
+                uid = item["pod"]["uid"]
 
                 if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE:
-                    self.logger.info(f'Pod {ns}.{pn} deleted. Freeing resources')
-                    self.ReleasePodResources(pn,ns)
+                    self.logger.info(f'Pod {ns}.{pn} [{uid}] deleted. Freeing resources')
+                    self.ReleasePodResources(pn, ns)
                     try:
                         del self.pod_state[(ns, pn)]
                     except KeyError as e:
-                        self.logger.error(f'Failed to find pod {ns}.{pn} in podstats!')
+                        self.logger.error(f'Failed to find pod {ns}.{pn} [{uid}] in podstats!')
 
 
                 elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE:
-                    # Note that controller may have been generating events asynchronously about pods we already know about.
+                    # Note that the controller may have been generating events asynchronously about pods we already know about.
                     # Check if it's in our list, and do nothing if it is.
                     if ((ns, pn) in self.pod_state) and (self.pod_state[(ns, pn)]['state'] == PodStatus.POD_STATUS_SCHEDULED):
-                        self.logger.info(f'Pod {ns}.{pn} errantly reported scheduled. Releasing resources and re-syncing internal record')
-                        self.ReleasePodResources(pn,ns)
-                        try:
-                            del self.pod_state[(ns, pn)]
-                        except KeyError as e:
-                            self.logger.error(f'Failed to find pod {ns}.{pn} in podstats!')
+                        if self.pod_state[(ns, pn)]['uid'] == uid:
+                            self.logger.info(f'Pod {ns}.{pn} [{uid}] appears to be scheduled already. Ignoring controller message')
+                            continue
+                        else:
+                            self.logger.info(f'Pod {ns}.{pn} [{self.pod_state[(ns, pn)]["uid"]}] errantly reported as scheduled. Releasing resources and re-syncing internal record')
+                            self.ReleasePodResources(pn, ns)
+                            try:
+                                del self.pod_state[(ns, pn)]
+                            except KeyError:
+                                self.logger.error(f'Failed to find pod {ns}.{pn} [{uid}] in podstats!')
 
                     # Schedule any new pods
-                    self.logger.info(f'Found new pending pod {ns}.{pn}')
+                    self.logger.info(f'Found new pending pod {ns}.{pn} [{uid}]')
                     # Normal pod that needs to be scheduled
-                    if not self.AttemptScheduling(pn, ns):
-                        self.logger.error(f'Failed scheduling pod {ns}.{pn}')
-                        self.pod_state[(ns, pn)] = {'state': PodStatus.POD_STATUS_FAILED, 'time': 0}
+                    if self.AttemptScheduling(pn, ns):
+                        self.pod_state[(ns, pn)] = {'state': PodStatus.POD_STATUS_SCHEDULED, 'time': time.time(), 'uid': uid}
                     else:
-                        self.pod_state[(ns, pn)] = {'state': PodStatus.POD_STATUS_SCHEDULED, 'time': time.time()}
+                        self.logger.error(f'Failed scheduling pod {ns}.{pn} [{uid}]')
+                        self.pod_state[(ns, pn)] = {'state': PodStatus.POD_STATUS_FAILED, 'time': 0, 'uid': '0'}
 
-                self.logger.debug(f'Done processing {ns}.{pn}. {len(self.pod_state)} pods in cache')
+                self.logger.debug(f'Done processing {ns}.{pn} [{uid}]. {len(self.pod_state)} pods in cache')
             # Node scheduleable/unscheduleable
             elif item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON,
                                   NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON):

@@ -41,18 +41,24 @@ def delete_fn(meta, **_):
 @kopf.on.update('', 'v1', 'nodes')
 def TriadNodeUpdate(spec, old, new, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
-    try:
-        NHDTainted = lambda obj: any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
-    except KeyError as e:
-        logger.error(f'Unable to find node taints - node {meta["name"]} update aborted - {e}')
-        return
+
+    def find_taint(obj, meta):
+        found = False
+        try:
+            found = any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
+        except KeyError as e:
+            logger.error(f'Unable to find node taints - node {meta["name"]} has key error: {e}')
+
+        return found
+
+    NHDTainted = lambda obj: find_taint(obj, meta)
 
     k8sq = qinst
     # If the NHD taint has been added/removed or the code has been cordoned/uncordoned, detect it here
     if (not NHDTainted(old) and NHDTainted(new)) or (('unschedulable' in old['spec'] and 'unschedulable' not in new['spec']) and NHDTainted(new)): # Uncordon
         logger.info(f'Uncordoning node {meta["name"]}')
         k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
-    elif (not NHDTainted(new) and NHDTainted(old)) or ('unschedulable' not in old['spec'] and 'unschedulable' in new['spec']): # Cordon:
+    elif (not NHDTainted(new) and NHDTainted(old)) or ('unschedulable' not in old['spec'] and 'unschedulable' in new['spec']): # Cordon
         logger.info(f'Cordoning node {meta["name"]}')
         k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON, "node": meta["name"]})
 
@@ -96,7 +102,7 @@ async def MonitorTriadSets(spec, meta, **kwargs):
         podname = f'{spec["serviceName"]}-{ord}'
         try:
             _ = v1.read_namespaced_pod(name = podname, namespace = meta["namespace"])
-        except ApiException as e:
+        except ApiException:
             logger.info(f'Triad pod {podname} not found in namespace {meta["namespace"]}, but TriadSet is still active. Restarting pod')
             podspec = yaml.dump(spec["template"])
             
@@ -111,7 +117,7 @@ async def MonitorTriadSets(spec, meta, **kwargs):
             podyaml['spec']['hostname']  = podname
             podyaml['spec']['subdomain'] = meta["name"]
             kopf.adopt(podyaml)
-            _ = v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
+            _= v1.create_namespaced_pod(namespace = meta['namespace'], body = podyaml)
 
 
 # Triad pod being created
@@ -120,10 +126,11 @@ async def MonitorTriadSets(spec, meta, **kwargs):
                 when=lambda spec, **_: spec.get('schedulerName') == NHD_SCHED_NAME)
 def TriadPodCreate(spec, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
-    logger.info(f'Saw new Triad pod {meta["namespace"]}.{meta["name"]}')
+    logger.info(f'Saw new Triad pod {meta["namespace"]}.{meta["name"]} - {meta["uid"]}')
 
     k8sq = qinst # Get the watch queue so we can notify NHD of events from the controller
-    k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE, "pod": {"ns": meta["namespace"], "name": meta["name"]}})
+    k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE, "pod": {"ns": meta["namespace"], "name": meta["name"], "uid": meta["uid"]}})
+
 
 # Triad pod being deleted
 @kopf.on.delete('', 'v1', 'pods',
@@ -131,10 +138,11 @@ def TriadPodCreate(spec, meta, **_):
                 when=lambda spec, **_: spec.get('schedulerName') == NHD_SCHED_NAME)
 def TriadPodDelete(spec, meta, **_):
     logger = NHDCommon.GetLogger(__name__)   
-    logger.info(f'Saw deleted Triad pod {meta["namespace"]}.{meta["name"]}')
+    logger.info(f'Saw deleted Triad pod {meta["namespace"]}.{meta["name"]} - {meta["uid"]}')
 
     k8sq = qinst # Get the watch queue so we can notify NHD of events from the controller
-    k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE, "pod": {"ns": meta["namespace"], "name": meta["name"]}})        
+    k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE, "pod": {"ns": meta["namespace"], "name": meta["name"], 'uid': meta["uid"]}})
+
 
 def HandleExceptions(loop, context):
     logger = NHDCommon.GetLogger(__name__)   
