@@ -18,10 +18,10 @@ SCHEDULABLE_NIC_SPEED_THRESH_MBPS   = 11000 # Don't include NICs for scheduling 
 ENABLE_SHARING                      = False # Allow pods to share a NIC
 
 
-"""
-Properties of a core inside of a node
-"""
 class NodeCore:
+    """
+    Properties of a core inside of a node
+    """
     def __init__(self, core, socket, sib):
         self.core: int = core
         self.sibling: int = sib
@@ -32,10 +32,10 @@ class NodeCore:
         self.sibling = sib
 
 
-"""
-Properties of a NIC inside of a node
-"""
 class NodeNic:
+    """
+    Properties of a NIC inside of a node
+    """
     def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int):
         self.ifname = ifname
         self.vendor = vendor
@@ -57,10 +57,10 @@ class NodeNic:
         return ':'.join(a+b for a,b in zip(mac[::2],mac[1::2])).upper()
 
 
-"""
-Properties of memory inside of a node
-"""
 class NodeMemory:
+    """
+    Properties of memory inside of a node
+    """
     def __init__(self):
         self.ttl_hugepages_gb = 0
         self.free_hugepages_gb = 0
@@ -68,10 +68,10 @@ class NodeMemory:
         self.free_mem_gb = 0 
 
 
-"""
-Properties of a GPU inside of a node
-"""
 class NodeGpu:
+    """
+    Properties of a GPU inside of a node
+    """
     def __init__(self, gtype: str, device_id: int, numa_node: int, pciesw: int):
         self.gtype = self.GetType(gtype)
         self.device_id = device_id
@@ -94,15 +94,15 @@ class NodeGpu:
         return GpuType.GPU_TYPE_NOT_SUPPORTED
 
 
-"""
-The Node class holds properties about a node's resources, as well as which resources have been used.
-Current resource types in a node are CPUs, GPU, and NICs.
-"""
 class Node:
+    """
+    Holds properties about a node's resources, as well as which resources have been used.
+    Current resource types in a node are CPUs, GPU, and NICs.
+    """
 
     NHD_MAINT_LABEL = 'sigproc.viasat.io/maintenance'
 
-    def __init__(self, name, active = True):
+    def __init__(self, name, active=True):
         self.logger = NHDCommon.GetLogger(__name__)
 
         self.name = name
@@ -123,6 +123,7 @@ class Node:
         self.mem: NodeMemory = NodeMemory()
         self.reserved_cores = [] # Reserved CPU cores
 
+    @staticmethod
     def GetMaintenance(labels):
         maintenance = False
         if (Node.NHD_MAINT_LABEL in labels):
