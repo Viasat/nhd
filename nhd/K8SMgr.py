@@ -99,7 +99,7 @@ class K8SMgr:
                     return magicattr.get(n, attr)
 
         except ApiException as e:
-            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e})
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e}")
 
     def GetNodeAddr(self, name):
         return self.GetNodeAttr(name, 'status.addresses[0].address')
