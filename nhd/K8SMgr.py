@@ -92,15 +92,14 @@ class K8SMgr:
         """
         Get an attribute from a node. Useful for pulling things like nested data structures.
         """
-        val = None
         try: 
-            a = self.v1.read_node(name = name)
-            for status in a.status.conditions:
-                if status.status == "True" and status.type == "Ready":
-                    return magicattr.get(a, attr)
+            n = self.v1.read_node(name=name)
+            for status in n.status.conditions:
+                if status.reason == "KubeletReady" and status.type == "Ready" and status.status == "True":
+                    return magicattr.get(n, attr)
 
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->list_node: %s\n" % e)
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e})
 
     def GetNodeAddr(self, name):
         return self.GetNodeAttr(name, 'status.addresses[0].address')
