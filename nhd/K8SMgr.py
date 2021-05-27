@@ -17,16 +17,18 @@ class K8SEventType(Enum):
     EVENT_TYPE_NORMAL = 0
     EVENT_TYPE_WARNING = 1
 
-"""
-Helper class to communicate with Kubernetes API server. Assumes we are either running in a pod with
-proper permissions, or we have a KUBECONFIG file with cluster information.
-"""
+
 class K8SMgr:
+    """
+    Helper class to communicate with Kubernetes API server.
+    Assumes NHD is either running in a pod with proper permissions, or
+    there is a KUBECONFIG file with cluster information.
+    """
     __instance = None
     
     @staticmethod
     def GetInstance():
-        if K8SMgr.__instance == None:
+        if K8SMgr.__instance is None:
             K8SMgr()
 
         return K8SMgr.__instance
@@ -37,9 +39,7 @@ class K8SMgr:
         """
         self.logger = NHDCommon.GetLogger(__name__)
 
-        if K8SMgr.__instance != None:
-            raise Exception("Cannot create more than one K8SMgr!")
-        else:
+        if K8SMgr.__instance is None:
             try:
                 config.load_incluster_config()
             except:
@@ -49,18 +49,22 @@ class K8SMgr:
             self.last_seen_ver = None
 
             K8SMgr.__instance = self
+        else:
+            raise Exception("Cannot create more than one K8SMgr!")
 
     def GetNodes(self):
-        """ Get the list of all currently-ready nodes """
+        """
+        Get the list of all currently-ready nodes
+        """
         nodes = []
-        try: 
-            a = self.v1.list_node(watch=False)
-            for i in a.items:
-                for status in i.status.conditions:
-                    if status.status == "True" and status.type == "Ready":
-                        nodes.append(i.metadata.name)
+        try:
+            nl = self.v1.list_node(watch=False)
+            for node in nl.items:
+                for status in node.status.conditions:
+                    if status.reason == "KubeletReady" and status.type == "Ready" and status.status == "True":
+                        nodes.append(node.metadata.name)
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->list_node: %s\n" % e)
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e}")
 
         return nodes
                 
@@ -88,15 +92,14 @@ class K8SMgr:
         """
         Get an attribute from a node. Useful for pulling things like nested data structures.
         """
-        val = None
         try: 
-            a = self.v1.read_node(name = name)
-            for status in a.status.conditions:
-                if status.status == "True" and status.type == "Ready":
-                    return magicattr.get(a, attr)
+            n = self.v1.read_node(name=name)
+            for status in n.status.conditions:
+                if status.reason == "KubeletReady" and status.type == "Ready" and status.status == "True":
+                    return magicattr.get(n, attr)
 
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->list_node: %s\n" % e)
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e}")
 
     def GetNodeAddr(self, name):
         return self.GetNodeAttr(name, 'status.addresses[0].address')
@@ -161,15 +164,16 @@ class K8SMgr:
 
     def IsNodeActive(self, node):
         """
-        Find out if the node is tainted for NHD. Only tainted nodes will be used by NHD for scheduling, and also
-        ignored by the default scheduler.
+        Find out if the node is tainted for NHD.
+        Only tainted nodes will be used by NHD for scheduling, and
+        will also be ignored by the default scheduler.
         """
         candidate = False
         try: 
-            a = self.v1.read_node(name = node)        
+            a = self.v1.read_node(name=node)
             taints = a.spec.taints
 
-            if candidate and not (a.status.status == "True" and a.status.type == "Ready"): 
+            if candidate and not (a.status.conditions[0].reason == "KubeletReady" and a.status.conditions[0].type == "Ready" and a.status.conditions[0].status == "True"):
                 return False         
             
             for t in taints:
@@ -498,8 +502,11 @@ class K8SMgr:
 
 
     def GetTimeNow(self) -> str:
-        """ Uses Kubernetes undocumented format. Any deviation from this will throw an error at the API server """
-        return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        """
+        Uses 'Zulu' / GMT format.
+        Any deviation from this will throw an error at the API server
+        """
+        return datetime.datetime.utcnow().isoformat(timespec='seconds')+'Z'
 
     def GetRandomUid(self) -> str:
         return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
