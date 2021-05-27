@@ -164,15 +164,16 @@ class K8SMgr:
 
     def IsNodeActive(self, node):
         """
-        Find out if the node is tainted for NHD. Only tainted nodes will be used by NHD for scheduling, and also
-        ignored by the default scheduler.
+        Find out if the node is tainted for NHD.
+        Only tainted nodes will be used by NHD for scheduling, and
+        will also be ignored by the default scheduler.
         """
         candidate = False
         try: 
-            a = self.v1.read_node(name = node)        
+            a = self.v1.read_node(name=node)
             taints = a.spec.taints
 
-            if candidate and not (a.status.status == "True" and a.status.type == "Ready"): 
+            if candidate and not (a.status.conditions[0].reason == "KubeletReady" and a.status.conditions[0].type == "Ready" and a.status.conditions[0].status == "True"):
                 return False         
             
             for t in taints:
