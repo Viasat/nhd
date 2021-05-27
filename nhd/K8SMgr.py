@@ -17,16 +17,18 @@ class K8SEventType(Enum):
     EVENT_TYPE_NORMAL = 0
     EVENT_TYPE_WARNING = 1
 
-"""
-Helper class to communicate with Kubernetes API server. Assumes we are either running in a pod with
-proper permissions, or we have a KUBECONFIG file with cluster information.
-"""
+
 class K8SMgr:
+    """
+    Helper class to communicate with Kubernetes API server.
+    Assumes NHD is either running in a pod with proper permissions, or
+    there is a KUBECONFIG file with cluster information.
+    """
     __instance = None
     
     @staticmethod
     def GetInstance():
-        if K8SMgr.__instance == None:
+        if K8SMgr.__instance is None:
             K8SMgr()
 
         return K8SMgr.__instance
@@ -37,9 +39,7 @@ class K8SMgr:
         """
         self.logger = NHDCommon.GetLogger(__name__)
 
-        if K8SMgr.__instance != None:
-            raise Exception("Cannot create more than one K8SMgr!")
-        else:
+        if K8SMgr.__instance is None:
             try:
                 config.load_incluster_config()
             except:
@@ -49,6 +49,8 @@ class K8SMgr:
             self.last_seen_ver = None
 
             K8SMgr.__instance = self
+        else:
+            raise Exception("Cannot create more than one K8SMgr!")
 
     def GetNodes(self):
         """ Get the list of all currently-ready nodes """
