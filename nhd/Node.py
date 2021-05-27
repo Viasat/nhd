@@ -12,9 +12,11 @@ from typing import Dict, List, Tuple
 from itertools import chain
 from collections import defaultdict
 
+
 NIC_BW_AVAIL_PERCENT                = 0.9 # Only allow NICs to be scheduled up to this much of their total capacity
 SCHEDULABLE_NIC_SPEED_THRESH_MBPS   = 11000 # Don't include NICs for scheduling that are below this speed
 ENABLE_SHARING                      = False # Allow pods to share a NIC
+
 
 """
 Properties of a core inside of a node
@@ -28,6 +30,7 @@ class NodeCore:
 
     def SetSibling(self, sib):
         self.sibling = sib
+
 
 """
 Properties of a NIC inside of a node
@@ -90,6 +93,7 @@ class NodeGpu:
 
         return GpuType.GPU_TYPE_NOT_SUPPORTED
 
+
 """
 The Node class holds properties about a node's resources, as well as which resources have been used.
 Current resource types in a node are CPUs, GPU, and NICs.
@@ -127,7 +131,6 @@ class Node:
                 maintenance = True
 
         return maintenance
-
 
     def ResetResources(self):
         """ Resets all resources back to initial values """
@@ -192,16 +195,16 @@ class Node:
 
     def AddScheduledPod(self, pod, ns, top):
         """ Add a scheduled pod to the node """
-        self.logger.info(f'Adding pod {(pod,ns)} to node {self.name}')
-        self.pod_info[(pod,ns)] = top
-    
+        self.logger.info(f'Adding pod {(pod, ns)} to node {self.name}')
+        self.pod_info[(pod, ns)] = top
+
     def RemoveScheduledPod(self, pod, ns):
         """ Remove a scheduled pod from the node """
-        self.logger.info(f'Removing pod {(pod,ns)} from node {self.name}')
+        self.logger.info(f'Removing pod {(pod, ns)} from node {self.name}')
         try: 
-            del self.pod_info[(pod,ns)]
-        except KeyError as e:
-            self.logger.error(f'Couldn\'t find pod {(pod,ns)} in pod list!')
+            del self.pod_info[(pod, ns)]
+        except KeyError:
+            self.logger.error(f'Couldn\'t find pod {(pod, ns)} in pod list!')
 
     def GetGPU(self, di):
         """ Gets a GPU by device ID """
@@ -268,7 +271,6 @@ class Node:
 
         return ninfo      
                    
-
     def GetFreeNumaNicResources(self) -> List[int]:
         """ Return the amount of free NIC resources per NUMA node """
         ninfo = [[] for _ in range(self.numa_nodes)]
@@ -283,7 +285,6 @@ class Node:
                 self.logger.warning(f'Node {self.name}, NIC {n.mac} has unexpected NUMA node {n.numa_node} of {self.numa_nodes}')  
 
         return ninfo
-
 
     @staticmethod
     def ParseRangeList(rl: str):
@@ -484,7 +485,7 @@ class Node:
                 return g
 
         return None                    
-     
+
     def GetFreeCpuBatch(self, numa: int, num: int, smt: SMTSetting) -> List[int]:
         cpus = []
         for ci,c in enumerate(self.cores):
@@ -512,8 +513,6 @@ class Node:
         self.logger.info(f'   NICs:')
         for n in self.nics:
             self.logger.info(f'        {n.mac}: {n.speed_used[0]}/{n.speed_used[1]} Gbps used on {n.speed} Gbps interface with {n.pods_used} pods using interface')
-        
-
 
     def RemoveResourcesFromTopology(self, top) -> bool:
         """ Remove resources from a node that are present in a topology structure. """
@@ -529,7 +528,7 @@ class Node:
                     if self.cores[m.core].used:
                         self.logger.error(f'Processing group core {m.core} was already in use!')
                     self.cores[m.core].used = True
-                except IndexError as e:
+                except IndexError:
                     self.logger.error(f"Failed to get core at index {m.core} when size is {len(self.cores)}")
                     return False
 
@@ -629,11 +628,9 @@ class Node:
         self.logger.info(f'Built NetworkAttachmentDefinition of {names}')
         return names
 
-
     def ClaimPodNICResources(self, nidx):
         for ni in nidx: # Mark as pod using the interface
             self.nics[ni].pods_used += 1
-
 
     def GetFreePciGpuFromNic(self, nic):
         # Search free GPUs
@@ -650,7 +647,6 @@ class Node:
                 return nic
         return None     
 
-
     def SetPhysicalIdsFromMapping(self, mapping, top: CfgTopology):
         """ Maps the indices after the mapping function is done into physical node resources based on what's free. Uses
             the previously-defined topology to pull the actual groups out """
@@ -662,7 +658,7 @@ class Node:
         
         try:
             # Go through each of the processing groups and map resources
-            for pi,pv in enumerate(top.proc_groups):
+            for pi, pv in enumerate(top.proc_groups):
                 # Set VLAN
                 self.logger.info(f'Setting VLAN to {self.data_vlan}')
                 pv.vlan.vlan = self.data_vlan
@@ -685,7 +681,8 @@ class Node:
                 #         self.logger.error(f'When using PCI mode the number of GPUs and NICs must match for now ({len(mapping["nic"][pi])} != {len(pv.group_gpus)})')
                 #         return None
 
-                nic_gpu_map = []
+                #nic_gpu_map = []
+
                 # Grab GPUs and NICs that are on the same switch using the physical NIC index. This will need to be updated when we support one NIC
                 # to multiple GPUs. For now assume there's one NIC per processing group. This will be expanded later if needed.
                 nicinfo = mapping['nic'][pi]
@@ -750,7 +747,7 @@ class Node:
                             self.logger.error(f'Couldn\'t find core {groupc.name} in nic group list!')
                             raise IndexError
                         
-                        self.logger.info(f'Adding interface {self.nics[idx].ifname} with mac {self.nics[idx].mac} to core {groupc.core}')
+                        self.logger.info(f'Adding node {self.name} interface {self.nics[idx].ifname} with mac {self.nics[idx].mac} to core {groupc.core}')
                         ng.AddInterface(self.nics[idx].mac)
 
                 # Check that we used all the CPU cores
@@ -829,5 +826,3 @@ class Node:
         self.logger.info(f'Node {self.name} has {self.GetFreeCpuCoreCount()} CPU cores and {self.GetFreeGpuCount()} free GPUs left')
 
         return used_nics # The NIC list is used to populate the network attachment definitions externally
-
-        
