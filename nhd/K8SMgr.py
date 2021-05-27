@@ -53,16 +53,18 @@ class K8SMgr:
             raise Exception("Cannot create more than one K8SMgr!")
 
     def GetNodes(self):
-        """ Get the list of all currently-ready nodes """
+        """
+        Get the list of all currently-ready nodes
+        """
         nodes = []
-        try: 
-            a = self.v1.list_node(watch=False)
-            for i in a.items:
-                for status in i.status.conditions:
-                    if status.status == "True" and status.type == "Ready":
-                        nodes.append(i.metadata.name)
+        try:
+            nl = self.v1.list_node(watch=False)
+            for node in nl.items:
+                for status in node.status.conditions:
+                    if status.reason == "KubeletReady" and status.type == "Ready" and status.status == "True":
+                        nodes.append(node.metadata.name)
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->list_node: %s\n" % e)
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e}")
 
         return nodes
                 
