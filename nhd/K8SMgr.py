@@ -498,8 +498,11 @@ class K8SMgr:
 
 
     def GetTimeNow(self) -> str:
-        """ Uses Kubernetes undocumented format. Any deviation from this will throw an error at the API server """
-        return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        """
+        Uses 'Zulu' / GMT format.
+        Any deviation from this will throw an error at the API server
+        """
+        return datetime.datetime.utcnow().isoformat(timespec='seconds')+'Z'
 
     def GetRandomUid(self) -> str:
         return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
