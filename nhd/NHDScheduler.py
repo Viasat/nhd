@@ -476,6 +476,17 @@ class NHDScheduler(threading.Thread):
 
                 continue
 
+            # Node deletion event
+            if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_DELETE:
+                for n, v in self.nodes.items():
+                    if n == item["node"]:
+                        self.logger.info(f'Deleting Node {n} from NHD node list')
+                        try:
+                            del self.nodes[n]
+                        except KeyError as e:
+                            self.logger.error(f'Failed to delete node {n} from NHD node list!')
+                        break
+
             # Pod creation/deletion events
             if item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE,
                                 NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE):
