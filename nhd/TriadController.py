@@ -37,6 +37,14 @@ def delete_fn(meta, **_):
     logger.info('Received delete request for TriadSet')
 
 
+# Detect node deletion event
+@kopf.on.delete('','v1','nodes')
+def TriadNodeDelete(meta, **_):
+    logger = NHDCommon.GetLogger(__name__)
+    logger.info('K8s node deletion detected: %s', (meta["name"]))
+    k8sq = qinst
+    k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_DELETE, "node": meta["name"]})
+
 # Detect node changes to determine if a node is cordoned and/or the NHD group label is changing
 @kopf.on.update('', 'v1', 'nodes')
 def TriadNodeUpdate(spec, old, new, meta, **_):
@@ -82,6 +90,8 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
     elif (oldMaintenance and not newMaintenance):
         logger.info(f'Ending Maintenance for node {meta["name"]}')
         k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_END, "node": meta["name"]})
+
+
 
 
 # Timer acting as the TriadSet controller. Pods under the set are only created here either by a new set appearing, or an

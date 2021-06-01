@@ -13,6 +13,7 @@ class NHDWatchTypes(Enum):
     NHD_WATCH_TYPE_GROUP_UPDATE = 7,
     NHD_WATCH_TYPE_NODE_MAINT_START = 8,
     NHD_WATCH_TYPE_NODE_MAINT_END = 9,
+    NHD_WATCH_TYPE_TRIAD_NODE_DELETE = 10,
 
 
 class NHDWatchQueue(object):
@@ -36,5 +37,5 @@ class NHDWatchQueue(object):
         return self.nqueue.qsize()
 
 
-  
+
 qinst = NHDWatchQueue()
