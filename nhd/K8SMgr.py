@@ -73,7 +73,7 @@ class K8SMgr:
         Pulls the hugepage resource information from a node (requests/allocatable)
         """
         try: 
-            a = self.v1.read_node(name = node)
+            a = self.v1.read_node(name=node)
             alloc = int(a.status.allocatable['hugepages-1Gi'][:a.status.allocatable['hugepages-1Gi'].find('G')])
 
             free = alloc
@@ -86,7 +86,7 @@ class K8SMgr:
         except Exception as e:
             self.logger.error("Non-API exception when getting hugepage information")
         
-        return (0,0)
+        return (0, 0)
 
     def GetNodeAttr(self, name, attr):
         """
@@ -109,19 +109,19 @@ class K8SMgr:
 
     def GetPodNode(self, pod, ns):
         """
-        Get the node a pod resides on
+        Get the node where the pod resides
         """
         try: 
             ret = self.v1.read_namespaced_pod(pod, ns)
             if ret == None:
-                return None
+                return ''
 
             return ret.spec.node_name
             
         except ApiException as e:
             self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)                  
         
-        return None
+        return ''
 
     def GetPodObj(self, pod, ns):
         try: 

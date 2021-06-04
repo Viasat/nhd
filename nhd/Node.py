@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+import time
 from nhd.NHDCommon import NHDCommon
 from colorlog import ColoredFormatter
 from nhd.CfgTopology import SMTSetting
@@ -18,10 +20,10 @@ SCHEDULABLE_NIC_SPEED_THRESH_MBPS   = 11000 # Don't include NICs for scheduling 
 ENABLE_SHARING                      = False # Allow pods to share a NIC
 
 
-"""
-Properties of a core inside of a node
-"""
 class NodeCore:
+    """
+    Properties of a core inside of a node
+    """
     def __init__(self, core, socket, sib):
         self.core: int = core
         self.sibling: int = sib
@@ -32,10 +34,10 @@ class NodeCore:
         self.sibling = sib
 
 
-"""
-Properties of a NIC inside of a node
-"""
 class NodeNic:
+    """
+    Properties of a NIC inside of a node
+    """
     def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int):
         self.ifname = ifname
         self.vendor = vendor
@@ -57,10 +59,10 @@ class NodeNic:
         return ':'.join(a+b for a,b in zip(mac[::2],mac[1::2])).upper()
 
 
-"""
-Properties of memory inside of a node
-"""
 class NodeMemory:
+    """
+    Properties of memory inside of a node
+    """
     def __init__(self):
         self.ttl_hugepages_gb = 0
         self.free_hugepages_gb = 0
@@ -68,10 +70,10 @@ class NodeMemory:
         self.free_mem_gb = 0 
 
 
-"""
-Properties of a GPU inside of a node
-"""
 class NodeGpu:
+    """
+    Properties of a GPU inside of a node
+    """
     def __init__(self, gtype: str, device_id: int, numa_node: int, pciesw: int):
         self.gtype = self.GetType(gtype)
         self.device_id = device_id
@@ -94,19 +96,23 @@ class NodeGpu:
         return GpuType.GPU_TYPE_NOT_SUPPORTED
 
 
-"""
-The Node class holds properties about a node's resources, as well as which resources have been used.
-Current resource types in a node are CPUs, GPU, and NICs.
-"""
 class Node:
+    """
+    Holds properties about a node's resources, as well as which resources have been used.
+    Current resource types in a node are CPUs, GPU, and NICs.
+    """
 
+    # Set MIN_BUSY_SECS to termination grace period time (default is 30 seconds)
+    MIN_BUSY_SECS = float(30)
     NHD_MAINT_LABEL = 'sigproc.viasat.io/maintenance'
 
-    def __init__(self, name, active = True):
+    def __init__(self, name, active=True):
         self.logger = NHDCommon.GetLogger(__name__)
-
         self.name = name
         self.active = active
+        self.busy_lock = threading.Lock()
+        self.busy_time = float(0)
+        self.last_busy_time_seconds = float(0)
         self.cores: List[NodeCore] = []
         self.gpus = []
         self.nics = []
@@ -123,6 +129,7 @@ class Node:
         self.mem: NodeMemory = NodeMemory()
         self.reserved_cores = [] # Reserved CPU cores
 
+    @staticmethod
     def GetMaintenance(labels):
         maintenance = False
         if (Node.NHD_MAINT_LABEL in labels):
@@ -620,8 +627,8 @@ class Node:
         # Hugepages requests
         if top.hugepages_gb > 0:
             self.mem.free_hugepages_gb += top.hugepages_gb    
-            self.logger.info(f'Adding {top.hugepages_gb} 1GB hugepages to node. {self.mem.free_hugepages_gb} remaining')                    
-    
+            self.logger.info(f'Adding {top.hugepages_gb} 1GB hugepages to node. {self.mem.free_hugepages_gb} remaining')
+
     def GetNADListFromIndices(self, ilist: List[int]):
         """ Get the NAD list from the NIC indices """
         names = [self.nics[i].ifname for i in ilist]
@@ -691,7 +698,7 @@ class Node:
                     self.logger.error(f'Couldn\'t find NIC object from index {nicinfo}')
                     raise IndexError
 
-                for gi,gv in enumerate(pv.group_gpus):
+                for gi, gv in enumerate(pv.group_gpus):
                     gdev = self.GetFreePciGpuFromNic(nobj)                    
                     if gdev == None:
                         # If we can't find a free GPU for this NIC, and we're in PCI mode, then something went wrong. We need to bail out.
@@ -826,3 +833,15 @@ class Node:
         self.logger.info(f'Node {self.name} has {self.GetFreeCpuCoreCount()} CPU cores and {self.GetFreeGpuCount()} free GPUs left')
 
         return used_nics # The NIC list is used to populate the network attachment definitions externally
+
+    def SetBusy(self):
+        with self.busy_lock:
+            self.busy_time = time.monotonic()
+
+    def IsBusy(self):
+        self.last_busy_time_seconds = time.monotonic() - self.busy_time
+
+        return self.last_busy_time_seconds < self.MIN_BUSY_SECS
+
+    def GetBusyTimeSeconds(self):
+        return self.last_busy_time_seconds
