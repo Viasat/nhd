@@ -126,7 +126,7 @@ class TriadCfgParser(CfgParser):
                 c = int(magicattr.get(self.cfg, i))
                 self.top.AddMiscCore(Core(i, 0, NICCoreDirection.NIC_CORE_DIRECTION_NONE, NUMASetting.LOGICAL_NUMA_DONT_CARE, c))
             except AttributeError as e:
-                self.logger.error(f'Failed to parse field {i} from config file')
+                self.logger.error(f'Failed to parse field {i} from config file:\n    {e}')
                 return False
 
         return True
@@ -135,7 +135,6 @@ class TriadCfgParser(CfgParser):
         """ 
         Sets all the module groups in the topology structure 
         """
-        pgs = []
         if 'mod_defs' not in self.cfg.TopologyCfg:
             self.logger.debug('No module definitions found in topology config')
             return False
