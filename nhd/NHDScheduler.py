@@ -94,7 +94,7 @@ class NHDScheduler(threading.Thread):
                     v.active = False                  
 
             except Exception as e:
-                print('Caught exception while setting up node {n}:', e)
+                self.logger.error(f'Caught exception while setting up node {n}:\n    {e}')
                 v.active = False
 
         # JVM: this is only printing a message - maybe should be part of InitNHDNodes() ?
@@ -181,28 +181,28 @@ class NHDScheduler(threading.Thread):
             return
 
         cfgtype = self.k8s.GetCfgType(podname, ns)
-        tcfg = self.GetCfgParser(cfgtype, cfgstr)        
+        tcfg = self.GetCfgParser(cfgtype, cfgstr)
         top = tcfg.CfgToTopology(True)
 
         if top is not None: # Start removing pod's resources from node
-            n = self.k8s.GetPodNode(podname, ns)
-            if not n:
+            node = self.k8s.GetPodNode(podname, ns)
+            if not node:
                 self.logger.error('Pulled pod\'s config, but it wasn\'t assigned a node!')
                 return
 
-            if n not in self.nodes:
-                self.logger.error(f'Pod is mapping to node {n} but that node isn\'t in the current node list. Skipping')
+            if node not in self.nodes:
+                self.logger.error(f'Pod is mapping to node {node} but that node isn\'t in the current node list. Skipping')
                 return
 
-            if not self.nodes[n].PodPresent(podname, ns):
-                self.logger.error(f'Pod {ns}.{podname} is not scheduled on node {n}! Cannot remove')
-                return 
+            if not self.nodes[node].PodPresent(podname, ns):
+                self.logger.error(f'Pod {ns}.{podname} is not scheduled on node {node}! Cannot remove')
+                return
 
             # Passed all the tests. Now remove the resources from the cluster
-            self.logger.info(f'Freeing node resources from {n}')
-            self.nodes[n].AddResourcesFromTopology(top)
-            self.nodes[n].RemoveScheduledPod(podname, ns)
-
+            self.logger.info(f'Freeing node resources from {node}')
+            self.nodes[node].AddResourcesFromTopology(top)
+            self.nodes[node].RemoveScheduledPod(podname, ns)
+            self.nodes[node].SetBusy()
 
     def PrintAllNodeResources(self):
         """
@@ -260,7 +260,7 @@ class NHDScheduler(threading.Thread):
         self.k8s.GeneratePodEvent(pobj, podname, ns, 'StartedScheduling', K8SEventType.EVENT_TYPE_NORMAL, \
                 f'Started scheduling {ns}/{podname}')
 
-        cmname, cfgstr = self.k8s.GetCfgMap(podname, ns)  
+        _, cfgstr = self.k8s.GetCfgMap(podname, ns)
         cfgtype = self.k8s.GetCfgType(podname, ns)
         tcfg = self.GetCfgParser(cfgtype, cfgstr)
 
@@ -269,7 +269,6 @@ class NHDScheduler(threading.Thread):
             self.k8s.GeneratePodEvent(pobj, podname, ns, 'FailedCfgParse', K8SEventType.EVENT_TYPE_WARNING, \
                     f'Error while processing config for pod {podname}')
             return False
-
 
         # Filter out nodes not belonging to the node group requested by this pod
         filt_nodes = self.InitialNodeFilter(podname, ns)
@@ -286,6 +285,8 @@ class NHDScheduler(threading.Thread):
 
         self.k8s.GeneratePodEvent(pobj, podname, ns, 'Scheduling', K8SEventType.EVENT_TYPE_NORMAL, \
                 f'Node {nodename} selected for scheduling')
+
+        self.nodes[nodename].SetBusy()
 
         try:
            nic_list = self.nodes[nodename].SetPhysicalIdsFromMapping(match[1], top)
