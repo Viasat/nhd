@@ -32,7 +32,7 @@ def TriadSetCreate(spec, meta, **_):
 
 # TriadSet deleted. Nothing really to do here since k8s will tear the pods down as part of the ownership
 @kopf.on.delete('sigproc.viasat.io', 'v1', 'triadsets')
-def delete_fn(meta, **_):
+def TriadSetDelete(meta, **_):
     logger = NHDCommon.GetLogger(__name__)
     logger.info('Received delete request for TriadSet')
 
