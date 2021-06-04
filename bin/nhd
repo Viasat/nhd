@@ -23,10 +23,6 @@ if __name__ == "__main__":
     # Initialize shared queue
     k8sq = qinst.size()
 
-    # Initialize shared semaphore
-    nhd_lock = NHDLock.GetInstance()
-  
-
     try:
         ready_flag = threading.Event()
         stop_flag = threading.Event()
