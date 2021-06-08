@@ -21,7 +21,7 @@ from nhd.NHDCommon import RpcMsgType
 from collections import defaultdict
 
 NHD_SCHED_NAME = "nhd-scheduler"
-IDLE_CNT_THRESH = 10
+IDLE_CNT_THRESH = 60
 Q_BLOCK_TIME_SEC = 0.5
 
 

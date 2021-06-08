@@ -57,18 +57,43 @@ def TriadNodeDelete(meta, **_):
 def TriadNodeUpdate(spec, old, new, meta, **_):
     logger = NHDCommon.GetLogger(__name__)
 
-    def find_taint(obj, meta):
+    def find_taint(obj, meta, taint_name):
         found = False
         try:
-            found = any([x['key'] == 'sigproc.viasat.io/nhd_scheduler' for x in obj['spec']['taints']])
+            found = any([x['key'] == taint_name for x in obj['spec']['taints']])
         except KeyError as e:
             logger.error(f'Unable to find node taints - node {meta["name"]} has key error: {e}')
 
         return found
 
-    NHDTainted = lambda obj: find_taint(obj, meta)
-
+    NHDTainted = lambda obj: find_taint(obj, meta, taint_name='sigproc.viasat.io/nhd_scheduler')
+    NHDUnreachable = lambda obj: find_taint(obj, meta, taint_name='node.kubernetes.io/unreachable')
+    NHDNotReady = lambda obj: find_taint(obj, meta, taint_name='node.kubernetes.io/not-ready')
+    
     k8sq = qinst
+
+    # Detect nodes coming and going due to readiness and reachability
+    if NHDTainted(new):
+        # If the node has become Unreachable, detect it here and cordon
+        if (not NHDUnreachable(old) and NHDUnreachable(new)):
+            logger.info(f'Node {meta["name"]} is in Unreachable state - cordoning.')
+            k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON, "node": meta["name"]})
+
+        # If the node has gotten back from Unreachable state, detect it here and uncordon 
+        if (not NHDUnreachable(new) and NHDUnreachable(old)):
+            logger.info(f'Node {meta["name"]} is in Reachable state - uncordoning.')
+            k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
+
+        # If the node has become NotReady, detect it here and cordon
+        if (not NHDNotReady(old) and NHDNotReady(new)):
+            logger.info(f'Node {meta["name"]} is in NotReady state - cordoning.')
+            k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON, "node": meta["name"]})
+
+        # If the node has gotten back from NotReady state, detect it here and uncordon 
+        if (not NHDNotReady(new) and NHDNotReady(old)):
+            logger.info(f'Node {meta["name"]} is in Ready state - uncordoning.')
+            k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
+
     # If the NHD taint has been added/removed or the code has been cordoned/uncordoned, detect it here
     if (not NHDTainted(old) and NHDTainted(new)) or (('unschedulable' in old['spec'] and 'unschedulable' not in new['spec']) and NHDTainted(new)): # Uncordon
         logger.info(f'Uncordoning node {meta["name"]}')
