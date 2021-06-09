@@ -80,7 +80,7 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
             k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON, "node": meta["name"]})
 
         # If the node has gotten back from Unreachable state, detect it here and uncordon 
-        if (not NHDUnreachable(new) and NHDUnreachable(old)):
+        elif (not NHDUnreachable(new) and NHDUnreachable(old)):
             logger.info(f'Node {meta["name"]} is in Reachable state - uncordoning.')
             k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
 
@@ -90,7 +90,7 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
             k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON, "node": meta["name"]})
 
         # If the node has gotten back from NotReady state, detect it here and uncordon 
-        if (not NHDNotReady(new) and NHDNotReady(old)):
+        elif (not NHDNotReady(new) and NHDNotReady(old)):
             logger.info(f'Node {meta["name"]} is in Ready state - uncordoning.')
             k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
 

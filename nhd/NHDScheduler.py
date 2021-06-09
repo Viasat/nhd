@@ -58,11 +58,11 @@ class NHDScheduler(threading.Thread):
         self.logger.warning(f'NHD version {self.ver}')
 
 
-    def InitNHDNodes(self,newNodes):
+    def InitNHDNodes(self,new_nodes):
         """
         Find all nodes handled by NHD given the node taints
         """        
-        for node in newNodes:
+        for node in new_nodes:
             active = self.k8s.IsNodeActive(node)
             self.nodes[node] = Node(node, active)
 
@@ -70,17 +70,17 @@ class NHDScheduler(threading.Thread):
 
         self.logger.info(f'{schedulable} nodes are marked as schedulable by NHD out of {len(self.nodes)} total nodes: {self.nodes.keys()}')
 
-    def BuildInitialNodeList(self,newNodes):
+    def BuildInitialNodeList(self,new_nodes):
         """
         Builds the initial list of available nodes on startup.
         In the future we need to watch for downed nodes and new nodes added later.
         """
         self.logger.info("Populating list of nodes") 
-        self.InitNHDNodes(newNodes)
+        self.InitNHDNodes(new_nodes)
 
 
         for n, v in self.nodes.items():
-            if n in newNodes:
+            if n in new_nodes:
                 try:
                     v.SetNodeAddr(self.k8s.GetNodeAddr(n))
 
@@ -95,7 +95,7 @@ class NHDScheduler(threading.Thread):
                         v.active = False                  
 
                 except Exception as e:
-                    print('Caught exception while setting up node {n}:', e)
+                    self.logger.error(f'Caught exception while setting up node {n}:\n    {e}')
                     v.active = False
 
         # JVM: this is only printing a message - maybe should be part of InitNHDNodes() ?
@@ -420,10 +420,10 @@ class NHDScheduler(threading.Thread):
         k8sNodelist = self.k8s.GetNodes()
 
         # get nodes which are in k8sNodelist but not in nhdNodelist
-        newNodes = list(set(k8sNodelist) - set(nhdNodelist)) + list(set(nhdNodelist) - set(k8sNodelist))
+        new_nodes = list(set(k8sNodelist) - set(nhdNodelist)) + list(set(nhdNodelist) - set(k8sNodelist))
 
-        # append newNodes to the NHD node list
-        return newNodes
+        # append new_nodes to the NHD node list
+        return new_nodes
 
     def CheckPendingPods(self):
         podlist = self.k8s.ServicePods(self.sched_name)        
@@ -493,32 +493,16 @@ class NHDScheduler(threading.Thread):
                         self.CheckPendingPods()
                         
                         if new_nodes_count > 0:
-                            newNodes = self.CheckNewNodes()
-                            if len(newNodes):
+                            new_nodes = self.CheckNewNodes()
+                            if len(new_nodes):
                                 # new nodes have been detected - trigger NHD initialization for the new nodes
-                                self.logger.info(f'Found new nodes - adding to the cluster: {newNodes}')
-                                self.BuildInitialNodeList(newNodes)
-                                new_nodes_count -= len(newNodes)
+                                self.logger.info(f'Found new nodes - adding to the cluster: {new_nodes}')
+                                self.BuildInitialNodeList(new_nodes)
+                                new_nodes_count -= len(new_nodes)
 
                 continue
 
-            # Node addition event
-            if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_CREATE:
-                self.logger.info(f'New node will be added in the next scheduling cycle')
-                # Increase the new node counter
-                new_nodes_count += 1
-
-            # Node deletion event
-            if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_DELETE:
-                for n, v in self.nodes.items():
-                    if n == item["node"]:
-                        self.logger.info(f'Deleting Node {n} from NHD node list')
-                        try:
-                            del self.nodes[n]
-                        except KeyError as e:
-                            self.logger.error(f'Failed to delete node {n} from NHD node list!')
-                        break
-
+            
             # Pod creation/deletion events
             if item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_DELETE,
                                 NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_POD_CREATE):
@@ -599,3 +583,21 @@ class NHDScheduler(threading.Thread):
                 for n, v in self.nodes.items():
                     if n == item["node"]:
                         v.SetGroups(item["groups"])
+
+            # Node addition event
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_CREATE:
+                self.logger.info(f'New node will be added in the next scheduling cycle')
+                # Increase the new node counter
+                new_nodes_count += 1
+
+            # Node deletion event
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_DELETE:
+                for n, v in self.nodes.items():
+                    if n == item["node"]:
+                        self.logger.info(f'Deleting Node {n} from NHD node list')
+                        try:
+                            del self.nodes[n]
+                        except KeyError as e:
+                            self.logger.error(f'Failed to delete node {n} from NHD node list!')
+                        break
+
