@@ -624,8 +624,11 @@ class NHDScheduler(threading.Thread):
                             if v.active:
                                 self.logger.info(f'Node {item["node"]} already activated for scheduling')
                             else:
-                                self.logger.info(f'Adding node {item["node"]} to schedulable list')
-                                v.active = True
+                                if self.k8s.IsNodeActive(v.name):
+                                    self.logger.info(f'Adding node {item["node"]} to schedulable list')
+                                    v.active = active
+                                else:
+                                    self.logger.info(f'Node {item["node"]} failed to pass NHD Scheduler readiness checks. Deactivating')
 
                         break
             elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_START:
