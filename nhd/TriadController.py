@@ -36,6 +36,13 @@ def TriadSetDelete(meta, **_):
     logger = NHDCommon.GetLogger(__name__)
     logger.info('Received delete request for TriadSet')
 
+# Detect node creation event
+@kopf.on.create('','v1','nodes')
+def TriadNodeCreate(spec, meta, **_):
+    logger = NHDCommon.GetLogger(__name__)
+    logger.info('K8s node creation detected: %s', (meta["name"]))
+    k8sq = qinst
+    k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_CREATE, "node": meta["name"]})
 
 # Detect node deletion event
 @kopf.on.delete('','v1','nodes')

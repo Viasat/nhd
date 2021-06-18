@@ -410,6 +410,68 @@ class NHDScheduler(threading.Thread):
             rsp = self.GetPodStats()
             q.put(rsp)
 
+    def CheckNewNodes(self):
+
+        # get the list of nodes stored in NHD
+        nhdNodelist = list(self.nodes.keys())
+
+        # get the list of ready nodes from k8s API directly
+        k8sNodelist = self.k8s.GetNodes()
+
+        # get nodes which are in k8sNodelist but not in nhdNodelist
+        newNodes = list(set(k8sNodelist) - set(nhdNodelist)) + list(set(nhdNodelist) - set(k8sNodelist))
+
+        return newNodes
+
+    def InitNewNHDNodes(self,newNodes):
+        """
+        Inits NHD nodes. Takes list of nodes as an argument
+        Parametrized version of InitNHDNodes
+        """        
+        for node in newNodes:
+            active = self.k8s.IsNodeActive(node)
+            self.nodes[node] = Node(node, active)
+
+        schedulable = sum([node.active for node in self.nodes.values()])
+        self.logger.info(f'{schedulable} nodes are marked as schedulable by NHD out of {len(self.nodes)} total nodes: {self.nodes.keys()}')
+
+    def AddNodesToNHDNodeList(self,newNodes):
+        """
+        Adds new nodes to the NHD list
+        Parametrized version of the BuildInitialNodeList initialization function
+        """
+        self.logger.info("Populating list of nodes") 
+        self.InitNewNHDNodes(newNodes)
+
+
+        for n, v in self.nodes.items():
+            if n in newNodes:
+                try:
+                    v.SetNodeAddr(self.k8s.GetNodeAddr(n))
+
+                    if not v.ParseLabels(self.k8s.GetNodeLabels(n)):
+                        self.logger.error(f'Error while parsing labels for node {n}, deactivating node')
+                        v.active = False
+                        continue
+
+                    (alloc, free) = self.k8s.GetNodeHugepageResources(n) 
+                    if alloc == 0 or not v.SetHugepages(alloc, free):
+                        self.logger.error(f'Error while parsing allocatable resources for node {n}, deactivating node')
+                        v.active = False                  
+
+                except Exception as e:
+                    print('Caught exception while setting up node {n}:', e)
+                    v.active = False
+                            # JVM: this is only printing a message - maybe should be part of InitNHDNodes() ?
+
+        for k,v in self.nodes.items():
+            if k in newNodes:
+                if v.active:
+                    self.logger.info(f'Adding node {k} to scheduling list')
+
+        self.logger.info("Done adding new nodes to scheduling list")
+
+
     def CheckPendingPods(self):
         podlist = self.k8s.ServicePods(self.sched_name)        
         for k, p in podlist.items():
@@ -455,6 +517,9 @@ class NHDScheduler(threading.Thread):
 
         idle_cnt = 0
 
+        # Counter needed for new node detection
+        new_nodes_count = 0
+
         while True:
             # Start watching for pods that want to be scheduled or are waiting to be freed
             try:
@@ -473,8 +538,23 @@ class NHDScheduler(threading.Thread):
                     if idle_cnt >= IDLE_CNT_THRESH:
                         idle_cnt = 0
                         self.CheckPendingPods()
+                        
+                        # Check for any new nodes to be added to the node list
+                        if new_nodes_count > 0:
+                            newNodes = self.CheckNewNodes()
+                            if len(newNodes):
+                                # new nodes have been detected - trigger NHD initialization for the new nodes
+                                self.logger.info(f'Found new nodes - adding to the cluster: {newNodes}')
+                                self.AddNodesToNHDNodeList(newNodes)
+                                new_nodes_count -= len(newNodes)
 
                 continue
+
+            # Node addition event
+            if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_CREATE:
+                self.logger.info(f'New node will be added in the next scheduling cycle')
+                # Increase the new node counter
+                new_nodes_count += 1
 
             # Node deletion event
             if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_DELETE:
