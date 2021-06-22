@@ -410,6 +410,40 @@ class NHDScheduler(threading.Thread):
             rsp = self.GetPodStats()
             q.put(rsp)
 
+    def AddNodeToNodelist(self,node):
+        """
+        Adds a new Node object to the node list. 
+        Node is initially in non-active state (disabled for scheduling)
+        """        
+        self.logger.info(f"Adding new node: {node}") 
+        self.nodes[node] = Node(node, active=False)
+
+    def ScanAndInitNode(self, node):
+        """
+        Performs a scan of the new node and updates info in the node object.
+        Scan is similar to BuildInitialNodeList function but for a single node.
+        Returns False if any of the scans fails.
+        """
+
+        try:
+            self.nodes[node].SetNodeAddr(self.k8s.GetNodeAddr(node))
+
+            if not self.nodes[node].ParseLabels(self.k8s.GetNodeLabels(node)):
+                self.logger.error(f'Error while parsing labels for node {node}, deactivating node')
+                return False
+
+            (alloc, free) = self.k8s.GetNodeHugepageResources(node) 
+            if alloc == 0 or not self.nodes[node].SetHugepages(alloc, free):
+                self.logger.error(f'Error while parsing allocatable resources for node {node}, deactivating node')
+                return False
+
+        except Exception as e:
+            self.logger.error(f'Caught exception while setting up node {node}:\n {e}')
+            return False
+
+        # Return True if all initialization went successful
+        return True
+
     def CheckPendingPods(self):
         podlist = self.k8s.ServicePods(self.sched_name)        
         for k, p in podlist.items():
@@ -473,7 +507,7 @@ class NHDScheduler(threading.Thread):
                     if idle_cnt >= IDLE_CNT_THRESH:
                         idle_cnt = 0
                         self.CheckPendingPods()
-
+                        
                 continue
 
             # Pod creation/deletion events
@@ -520,7 +554,7 @@ class NHDScheduler(threading.Thread):
             # Node scheduleable/unscheduleable
             elif item["type"] in (NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON,
                                   NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON):
-                self.logger.info(f'{"Cordoning" if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON else "Uncordoning"} node {item["node"]}')
+                self.logger.info(f'{"Cordoning" if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON else "Trying to uncordon"} node {item["node"]}')
                 for n, v in self.nodes.items():
                     if n == item["node"]:
                         if item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_CORDON:
@@ -533,10 +567,14 @@ class NHDScheduler(threading.Thread):
                             if v.active:
                                 self.logger.info(f'Node {item["node"]} already activated for scheduling')
                             else:
-                                self.logger.info(f'Adding node {item["node"]} to schedulable list')
-                                v.active = True
-
+                                active = (self.k8s.IsNodeActive(v.name) and self.ScanAndInitNode(v.name))
+                                if active:
+                                    self.logger.info(f'Adding node {item["node"]} to schedulable list')
+                                    v.active = active
+                                else:
+                                    self.logger.info(f'Node {item["node"]} failed to pass NHD Scheduler readiness checks. Deactivating')
                         break
+
             elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_START:
                 for n, v in self.nodes.items():
                     if n == item["node"]:
@@ -556,3 +594,19 @@ class NHDScheduler(threading.Thread):
                 for n, v in self.nodes.items():
                     if n == item["node"]:
                         v.SetGroups(item["groups"])
+
+           # Node addition event
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_CREATE:
+                self.logger.info(f'Trying to add a new node to the cluster')
+                self.AddNodeToNodelist(item["node"])
+
+            # Node deletion event
+            elif item["type"] == NHDWatchTypes.NHD_WATCH_TYPE_TRIAD_NODE_DELETE:
+                for n, v in self.nodes.items():
+                    if n == item["node"]:
+                        self.logger.info(f'Deleting Node {n} from NHD node list')
+                        try:
+                            del self.nodes[n]
+                        except KeyError as e:
+                            self.logger.error(f'Failed to delete node {n} from NHD node list!')
+                        break
