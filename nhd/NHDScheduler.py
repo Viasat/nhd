@@ -507,7 +507,7 @@ class NHDScheduler(threading.Thread):
                     if idle_cnt >= IDLE_CNT_THRESH:
                         idle_cnt = 0
                         self.CheckPendingPods()
-                        
+
                 continue
 
             # Pod creation/deletion events

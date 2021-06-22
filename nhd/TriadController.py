@@ -119,8 +119,6 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
         k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_MAINT_END, "node": meta["name"]})
 
 
-
-
 # Timer acting as the TriadSet controller. Pods under the set are only created here either by a new set appearing, or an
 # existing pod being deleted.
 @kopf.timer('sigproc.viasat.io', 'v1', 'triadsets', interval = 3.0, idle = 3.0)
