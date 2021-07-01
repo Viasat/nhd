@@ -89,6 +89,11 @@ def TriadNodeUpdate(spec, old, new, meta, **_):
             logger.info(f'Node {meta["name"]} is in Ready state - uncordoning.')
             k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
 
+        # If node has gotten back from Unreachable state and reports Ready status, detect it here and uncordon
+        elif (not NHDUnreachable(new) and NHDUnreachable(old) and not NHDNotReady(new)):
+            logger.info(f'Node {meta["name"]} is in Reachable state - uncordoning.')
+            k8sq.put({"type": NHDWatchTypes.NHD_WATCH_TYPE_NODE_UNCORDON, "node": meta["name"]})
+
     # If the NHD taint has been added/removed or the code has been cordoned/uncordoned, detect it here
     if (not NHDTainted(old) and NHDTainted(new)) or (('unschedulable' in old['spec'] and 'unschedulable' not in new['spec']) and NHDTainted(new)): # Uncordon
         logger.info(f'Uncordoning node {meta["name"]}')
