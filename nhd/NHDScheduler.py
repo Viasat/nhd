@@ -418,32 +418,6 @@ class NHDScheduler(threading.Thread):
         self.logger.info(f"Adding new node: {node}") 
         self.nodes[node] = Node(node, active=False)
 
-    def ScanAndInitNode(self, node):
-        """
-        Performs a scan of the new node and updates info in the node object.
-        Scan is similar to BuildInitialNodeList function but for a single node.
-        Returns False if any of the scans fails.
-        """
-
-        try:
-            self.nodes[node].SetNodeAddr(self.k8s.GetNodeAddr(node))
-
-            if not self.nodes[node].ParseLabels(self.k8s.GetNodeLabels(node)):
-                self.logger.error(f'Error while parsing labels for node {node}, deactivating node')
-                return False
-
-            (alloc, free) = self.k8s.GetNodeHugepageResources(node) 
-            if alloc == 0 or not self.nodes[node].SetHugepages(alloc, free):
-                self.logger.error(f'Error while parsing allocatable resources for node {node}, deactivating node')
-                return False
-
-        except Exception as e:
-            self.logger.error(f'Caught exception while setting up node {node}:\n {e}')
-            return False
-
-        # Return True if all initialization went successful
-        return True
-
     def CheckPendingPods(self):
         podlist = self.k8s.ServicePods(self.sched_name)        
         for k, p in podlist.items():
@@ -567,7 +541,7 @@ class NHDScheduler(threading.Thread):
                             if v.active:
                                 self.logger.info(f'Node {item["node"]} already activated for scheduling')
                             else:
-                                active = (self.k8s.IsNodeActive(v.name) and self.ScanAndInitNode(v.name))
+                                active = self.k8s.IsNodeActive(v.name)
                                 if active:
                                     self.logger.info(f'Adding node {item["node"]} to schedulable list')
                                     v.active = active
