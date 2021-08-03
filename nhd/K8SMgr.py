@@ -213,6 +213,20 @@ class K8SMgr:
 
         return pods
 
+    def GetNodeScheduledPods(self, sched_name, node_name):
+        """
+        Get all scheduled pods for a given scheduler and node
+        """        
+        field_selector = 'spec.nodeName='+node_name
+        ret = self.v1.list_pod_for_all_namespaces(field_selector=field_selector)
+        pods = []
+
+        for i in ret.items:
+            if i.spec.scheduler_name == sched_name:
+                pods.append((i.metadata.name, i.metadata.namespace, i.metadata.uid, i.status.phase))
+
+        return pods
+
 
     def GetRequestedPodResources(self, pod: str, ns: str) -> Dict[str, str]:
         """

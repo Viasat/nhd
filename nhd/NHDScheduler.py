@@ -24,6 +24,9 @@ NHD_SCHED_NAME = "nhd-scheduler"
 IDLE_CNT_THRESH = 60
 Q_BLOCK_TIME_SEC = 0.5
 
+# Number of times to check if node is active after it is uncordoned
+NODE_ACTIVE_RETRIES = 10
+
 
 # Scheduler status for each pod 
 class PodStatus(Enum):
@@ -157,6 +160,24 @@ class NHDScheduler(threading.Thread):
         self.LoadDeployedConfigs()
         self.logger.info('Node resources after reset:')
         self.PrintAllNodeResources()
+
+    def RefreshNodeResources(self,node):
+        """ On a single node:
+            Resets all known resources to those that have already been deployed. Useful when deployed resources
+            get out of sync with what's believed to be scheduled.
+            This function is typically invoked during node delete/add or cordon/uncordon cycle. """
+        self.logger.info(f'Resetting resource knowledge for node: {node.name}')
+
+        # Reset resources for node
+        node.ResetResources()
+
+        self.logger.info('Loading node running configuration files')
+
+        # Reallocate the node resources based on the scheduler info
+        self.LoadNodeDeployedConfigs(node.name)
+
+        self.logger.info('Node resources after reset:')
+        self.PrintSingleNodeResources(node)    
     
     def LoadDeployedConfigs(self):
         """ Loads any configs that were already deployed by this scheduler to be add as a used resource.
@@ -164,6 +185,19 @@ class NHDScheduler(threading.Thread):
         self.logger.info('Looking for any pods already deployed with used resources')
         pods = self.k8s.GetScheduledPods(self.sched_name)
         self.logger.info(f'Found scheduled pods: {pods}')
+        for p in pods:
+            if p[3] in ('Running', 'CrashLoopBackOff', 'Pending'):
+                self.logger.info(f'Reclaiming resources for pod {p[1]}.{p[0]}')
+                self.ClaimPodResources(p[0], p[1], p[2])
+            else:
+                self.logger.info(f'Pod {p[1]}.{p[0]} is in state: {p[3]}')
+
+    def LoadNodeDeployedConfigs(self,node_name):
+        """ Loads any configs that were already deployed by this scheduler on the node "node_name"
+            This typically happens when k8s node receives UNCORDON signal from TriadController """
+        self.logger.info('Looking for any pods already deployed with used resources')
+        pods = self.k8s.GetNodeScheduledPods(sched_name=self.sched_name, node_name=node_name)
+        self.logger.info(f'Found scheduled pods: {pods} for node: {node_name}')
         for p in pods:
             if p[3] in ('Running', 'CrashLoopBackOff', 'Pending'):
                 self.logger.info(f'Reclaiming resources for pod {p[1]}.{p[0]}')
@@ -210,6 +244,12 @@ class NHDScheduler(threading.Thread):
         """
         for _,n in self.nodes.items():
             n.PrintResourceStats()
+
+    def PrintSingleNodeResources(self,node):
+        """
+        Prints single node resource utilization (CPUs, GPUs, NICs)
+        """
+        node.PrintResourceStats()
 
     def ParsePodResources(self, pod: str, ns: str) -> Dict[str, int]:
         """
@@ -567,8 +607,22 @@ class NHDScheduler(threading.Thread):
                             if v.active:
                                 self.logger.info(f'Node {item["node"]} already activated for scheduling')
                             else:
-                                active = (self.k8s.IsNodeActive(v.name) and self.ScanAndInitNode(v.name))
+                                # Retry to get node "active" a configurable number of times 
+                                # to accomodate for k8s internal lags when uncordoning node.
+                                for i in range(NODE_ACTIVE_RETRIES):
+                                    active = (self.k8s.IsNodeActive(v.name) and self.ScanAndInitNode(v.name))
+                                    if active:
+                                        break
+                                    self.logger.info(f'Node {v.name} not active yet - will retry status check. Count: {i}')
+                                    time.sleep(1)
                                 if active:
+                                    # Refresh node resources
+                                    self.RefreshNodeResources(v)
+                                    # Scan pod resources for a given node and substract them from node resources
+                                    self.LoadNodeDeployedConfigs(v.name)
+                                    # Print node resources
+                                    self.PrintSingleNodeResources(v)
+
                                     self.logger.info(f'Adding node {item["node"]} to schedulable list')
                                     v.active = active
                                 else:
