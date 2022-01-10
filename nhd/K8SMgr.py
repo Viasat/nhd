@@ -364,6 +364,26 @@ class K8SMgr:
         self.logger.error(f'No ConfigMap found for {ns}.{pod}')
         return (None, None)
 
+ 
+    def AnnotatePodGpuMap(self, ns, podname, gpumap):
+        """ Publish pod GPU mappings as annotations for pod """
+        for key in gpumap:
+            try:
+                self.logger.info(f'Aannotating pod  GPU MAP: device: {key}, GPU:{gpumap[key]}')
+                self.v1.patch_namespaced_pod(podname, ns, body={
+                    "metadata": {
+                        "annotations": {
+                            "sigproc.viasat.io/nhd_gpu_devices."+key : str(gpumap[key])
+                            }
+                        }
+                    })
+
+            except ApiException as e:
+                self.logger.error(f'Failed to update pod GPU map  configuration for {podname} in namespace {ns}. Error: {e}')
+                return False        
+
+        return True
+
 
     def AnnotatePodConfig(self, ns, podname, configstr):
         """ Annotate the pod's configuration """
