@@ -315,6 +315,18 @@ class NHDScheduler(threading.Thread):
         # Finally, we map the filled-in topology config back into the appropriate format for the pod
         topstr = tcfg.TopologyToCfg()
 
+        # Get the gpu mappings string
+        gpustr = tcfg.TopologyToGpuMap()
+
+
+        # Annotate pod with GPU map if the topology specifies gpu map
+        if gpustr:
+            if not self.k8s.AnnotatePodGpuMap(ns, podname, gpustr):
+                self.k8s.GeneratePodEvent(pobj, podname, ns, 'PodCfgFailed', K8SEventType.EVENT_TYPE_WARNING, \
+                    f'Failed to annotate pod\'s GPU configuration')
+                self.ReleasePodResources(podname, ns)
+                return False
+
         # Annotate pod with new configuration
         if not self.k8s.AnnotatePodConfig(ns, podname, topstr):
             self.k8s.GeneratePodEvent(pobj, podname, ns, 'PodCfgFailed', K8SEventType.EVENT_TYPE_WARNING, \
