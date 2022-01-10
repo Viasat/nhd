@@ -375,6 +375,8 @@ class Node:
 
     def InitNics(self, labels):
         self.logger.info(f'Initializing NICs for node {self.name}')
+        # PS - reset the list of NIC-s before reconstruction
+        self.nics = []
         pfs = []
         # Build list of any PFs
         for l,v in labels.items():
@@ -420,6 +422,8 @@ class Node:
         return True
 
     def InitGpus(self, labels):
+        # PS - reset the list of NIC-s before reconstruction
+        self.gpus = []
         self.logger.info(f'Initializing GPUs for node {self.name}')
         for l,v in labels.items():
             if 'feature.node.kubernetes.io/nfd-extras-gpu' in l:
