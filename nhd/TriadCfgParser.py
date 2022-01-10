@@ -391,6 +391,22 @@ class TriadCfgParser(CfgParser):
         else:
             self.cfg[name] = value
 
+    def TopologyToGpuMap(self):
+        """ Create a list of pod GPU mappings in a string form  from the proc_groups topology object
+        """
+        gpu_annotations = {}
+        for c in self.top.proc_groups:
+            if len(c.group_gpus) > 0:
+                index = 0
+                for g in c.group_gpus:
+                    for gidx in range(len(g.dev_id_names)):
+                        devname="nvidia"+str(index)
+                        gpu_annotations[devname] = g.device_id
+                        index += 1
+ 
+        return gpu_annotations
+
+
     def TopologyToCfg(self) -> str:
         """ Translates the topology mapping with physical resources back into the triad configuration that previously held
             fake (placeholder) resources. This function assumes the topology structure in self.top has already been populated
