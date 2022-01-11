@@ -121,7 +121,7 @@ class K8SMgr:
             return ret.spec.node_name
 
         except ApiException as e:
-            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod: %s\n{e}")
+            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod:\n{e}")
 
         return ''
 
@@ -130,7 +130,7 @@ class K8SMgr:
             pobj = self.v1.read_namespaced_pod(pod, ns)
             return pobj
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n{e}")
+            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod:\n{e}")
 
         return None
 
