@@ -25,7 +25,7 @@ class K8SMgr:
     there is a KUBECONFIG file with cluster information.
     """
     __instance = None
-    
+
     @staticmethod
     def GetInstance():
         if K8SMgr.__instance is None:
@@ -64,42 +64,44 @@ class K8SMgr:
                     if status.reason == "KubeletReady" and status.type == "Ready" and status.status == "True":
                         nodes.append(node.metadata.name)
         except ApiException as e:
-            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e}")
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n{e}")
 
         return nodes
-                
+
     def GetNodeHugepageResources(self, node: str):
         """
         Pulls the hugepage resource information from a node (requests/allocatable)
         """
-        try: 
-            a = self.v1.read_node(name=node)
-            alloc = int(a.status.allocatable['hugepages-1Gi'][:a.status.allocatable['hugepages-1Gi'].find('G')])
+        try:
+            n = self.v1.read_node(name=node)
+            alloc = int(n.status.allocatable['hugepages-1Gi'][:n.status.allocatable['hugepages-1Gi'].find('G')])
 
-            free = alloc
             # Don't tabulate hugepage resources that are used here since we'll get them when we subtract off pods
+            free = alloc
 
             return (alloc, free)
 
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->list_node: %s\n" % e)
-        except Exception as e:
+            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n{e}")
+        except Exception:
             self.logger.error("Non-API exception when getting hugepage information")
-        
+
         return (0, 0)
 
     def GetNodeAttr(self, name, attr):
         """
         Get an attribute from a node. Useful for pulling things like nested data structures.
         """
-        try: 
+        try:
             n = self.v1.read_node(name=name)
             for status in n.status.conditions:
                 if status.reason == "KubeletReady" and status.type == "Ready" and status.status == "True":
                     return magicattr.get(n, attr)
 
         except ApiException as e:
-            self.logger.error(f"Exception when calling CoreV1Api->list_node:\n    {e}")
+            self.logger.error(f"Exception when calling CoreV1Api->read_node:\n    {e}")
+
+        return ''
 
     def GetNodeAddr(self, name):
         return self.GetNodeAttr(name, 'status.addresses[0].address')
@@ -111,53 +113,53 @@ class K8SMgr:
         """
         Get the node where the pod resides
         """
-        try: 
+        try:
             ret = self.v1.read_namespaced_pod(pod, ns)
-            if ret == None:
+            if ret is None:
                 return ''
 
             return ret.spec.node_name
-            
+
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)                  
-        
+            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod:\n{e}")
+
         return ''
 
     def GetPodObj(self, pod, ns):
-        try: 
+        try:
             pobj = self.v1.read_namespaced_pod(pod, ns)
             return pobj
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)  
-        
+            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod:\n{e}")
+
         return None
 
     def GetCfgAnnotations(self, pod, ns):
         """ Get the config annotations from the pod """
         k = 'sigproc.viasat.io/nhd_config'
         try:
-            annot = self.GetPodAnnotations(ns, pod)
-            if annot == None:
-                self.logger.error(f'Couldn\'t find pod annotations for pod {ns}.{pod}')
+            annot = self.GetPodAnnotations(pod, ns)
+            if annot is None:
+                self.logger.error(f'Could not find pod annotations for pod {ns}.{pod}')
                 return False
 
             return annot[k]
         except KeyError as e:
-            self.logger.error(f'Key [{e}] not found in pod annotations for {ns}.{pod}')          
-        
+            self.logger.error(f'Key [{e}] not found in pod annotations for {ns}.{pod}')
+
         return False
 
     def GetPodNodeGroups(self, pod, ns) -> str:
         """ Returns the node group name of the pod, or "default" if it doesn't exist. """
         try:
             p = self.v1.read_namespaced_pod(pod, ns)
-        except:
+        except ApiException:
             self.logger.warning(f"Failed to get pod annotations for pod {pod} in namespace {ns}")
             return ["default"]
 
         if 'sigproc.viasat.io/nhd_groups' in p.metadata.annotations:
             groups = p.metadata.annotations["sigproc.viasat.io/nhd_groups"].split(',')
-            self.logger.info(f'Pod is using NHD group {groups}') 
+            self.logger.info(f'Pod is using NHD group {groups}')
             return groups
         else:
             return ["default"]
@@ -169,72 +171,65 @@ class K8SMgr:
         will also be ignored by the default scheduler.
         """
         candidate = False
-        try: 
+        try:
             a = self.v1.read_node(name=node)
             taints = a.spec.taints
 
             if candidate and not (a.status.conditions[0].reason == "KubeletReady" and a.status.conditions[0].type == "Ready" and a.status.conditions[0].status == "True"):
-                return False         
-            
+                return False
+
             for t in taints:
                 if t.key == 'sigproc.viasat.io/nhd_scheduler' and t.effect == 'NoSchedule':
                     candidate = True
                 if t.key == 'node.kubernetes.io/unschedulable':
                     self.logger.warning(f'Node {node} disabled scheduling. Removing from list')
                     candidate = False
-                    break  
+                    break
 
         except Exception:
             return False
 
         return candidate
 
-    def GetPodAnnotations(self, ns, podname):
+    def GetPodAnnotations(self, podname, ns):
         try:
             p = self.v1.read_namespaced_pod(podname, ns)
             return p.metadata.annotations
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)
+            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod:\n    {e}")
             return None
 
         return None
 
-
     def GetScheduledPods(self, sched_name):
-        """
-        Get all scheduled pods for a given scheduler
-        """        
-        ret = self.v1.list_pod_for_all_namespaces()
+        """ Get all scheduled pods for a given scheduler """
         pods = []
+        pl = self.v1.list_pod_for_all_namespaces()
 
-        for i in ret.items:
+        for i in pl.items:
             if i.spec.scheduler_name == sched_name:
                 pods.append((i.metadata.name, i.metadata.namespace, i.metadata.uid, i.status.phase))
 
         return pods
 
-
     def GetRequestedPodResources(self, pod: str, ns: str) -> Dict[str, str]:
-        """
-        Get the pod resources in dict format
-        """        
-        try: 
+        """ Get the pod resources in dict format """
+        try:
             p = self.v1.read_namespaced_pod(pod, ns)
 
             # Only support one container per pod for now
             return p.spec.containers[0].resources.requests
         except ApiException as e:
-            self.logger.error("Exception when calling CoreV1Api->read_namespaced_pod: %s\n" % e)
+            self.logger.error(f"Exception when calling CoreV1Api->read_namespaced_pod:\n    {e}")
 
         return {}
 
-
     def ServicePods(self, sched_name):
         """ Check if a pod is waiting to be scheduled with the NHD scheduler """
-        pods = {}        
+        pods = {}
         try:
             ret = self.v1.list_pod_for_all_namespaces()
-        except ApiException as e:
+        except ApiException:
             self.logger.error("Failed to connect to Kubernetes")
             return pods
 
@@ -249,14 +244,13 @@ class K8SMgr:
     def FlushWatchQueue(self):
         self.logger.info('Flushing watch queue')
         w = watch.Watch()
-        if self.last_seen_ver == None:
+        if self.last_seen_ver is None:
             e = w.stream(self.v1.list_pod_for_all_namespaces)
         else:
             e = w.stream(self.v1.list_pod_for_all_namespaces, resource_version=self.last_seen_ver)
-        
+
         for event in e:
             self.last_seen_ver = event['object'].metadata.resource_version
-
 
 #    def ServicePods(self, sched_name):
         """ Switched to using a list of pods instead of watching """
@@ -272,12 +266,12 @@ class K8SMgr:
 #            if event['object'].spec.scheduler_name != sched_name:
 #                continue
 #
-#            return (event['object'].metadata.name, 
-#                    event['object'].metadata.namespace, 
-#                    event['object'].status.phase, 
+#            return (event['object'].metadata.name,
+#                    event['object'].metadata.namespace,
+#                    event['object'].status.phase,
 #                    event['object'].spec.node_name,
 #                    event['type'])
-#        
+#
 #        return None
 #                print(event['object'].status.phase, event['object'].metadata.name)
 #                if event['object'].status.phase == "Pending" and  event['object'].spec.node_name is None:
@@ -290,14 +284,14 @@ class K8SMgr:
     def AddNADToPod(self, pod, ns, nads):
         """ Adds network attachment definitions to bind to pod """
         try:
-            self.v1.patch_namespaced_pod(pod, ns, body= {
+            self.v1.patch_namespaced_pod(pod, ns, body={
                 "metadata": {
                     "annotations": {
                         "k8s.v1.cni.cncf.io/networks": nads
                     }
                 }
             })
-        except ApiException as e:
+        except ApiException:
             self.logger.error(f'Failed to update pod metadata NAD {pod} in namespace {ns}')
             return False
 
@@ -309,18 +303,18 @@ class K8SMgr:
         self.logger.info(f'Adding {num} SR-IOV device{"s" if num > 0 else ""} {device} to pod {ns}.{pod}')
 
         # This does NOT work. Even replacing a pod to update resources does not work. There's an outstanding KEP
-        # To fix this, but it's still not available yet: 
+        # To fix this, but it's still not available yet:
         # https://github.com/kubernetes/community/pull/2908/commits/4ad6fa7c27f4a21c27a6be83c2dc81c43549fa55
         try:
             p = self.v1.read_namespaced_pod(pod, ns)
-        except ApiException as e:
+        except ApiException:
             self.logger.error(f'Failed to get pod spec {pod} in namespace {ns}')
             return False
-        
+
         # Only add to first container
-        p.spec.containers[0].resources.limits[f'intel.com/{device}']   = f'{num}'
+        p.spec.containers[0].resources.limits[f'intel.com/{device}'] = f'{num}'
         p.spec.containers[0].resources.requests[f'intel.com/{device}'] = f'{num}'
-        
+
         try:
             self.v1.replace_namespaced_pod(pod, ns, body=p)
         except ApiException as e:
@@ -331,21 +325,18 @@ class K8SMgr:
         self.logger.info(f'Added SR-IOV device into pod {pod}')
         return True
 
-
     def GetCfgMap(self, pod, ns):
-        """
-        Gets the first configmap from an existing pod
-        """
+        """ Gets the first configmap from an existing pod """
         ret = self.v1.list_namespaced_pod(watch=False, namespace=ns)
         for i in ret.items:
-            if i.metadata.name != pod: # Only look at container that use the run command
+            if i.metadata.name != pod:  # Only look at container that use the run command
                 continue
-            
+
             cm = None
             for v in i.spec.volumes:
                 if v.config_map:
-                   cm = v.config_map.name
-                   break
+                    cm = v.config_map.name
+                    break
 
             if cm:
                 self.logger.info(f'Found base ConfigMap {cm} for pod {pod}')
@@ -364,26 +355,24 @@ class K8SMgr:
         self.logger.error(f'No ConfigMap found for {ns}.{pod}')
         return (None, None)
 
-
     def AnnotatePodConfig(self, ns, podname, configstr):
         """ Annotate the pod's configuration """
         try:
-            self.v1.patch_namespaced_pod(podname, ns, body= {
+            self.v1.patch_namespaced_pod(podname, ns, body={
                 "metadata": {
                     "annotations": {
                         "sigproc.viasat.io/nhd_config": configstr
                     }
                 }
             })
-        except ApiException as e:
+        except ApiException:
             self.logger.error(f'Failed to update pod metadata configuration for {podname} in namespace {ns}')
-            return False        
+            return False
 
         return True
 
     def PatchConfigMap(self, ns, cmname, cmbody):
         """ Patches a ConfigMap object in place with a new value """
-
         try:
             resp = self.v1.read_namespaced_config_map(name=cmname, namespace=ns)
             keyname = list(resp.data.keys())[0]
@@ -398,10 +387,10 @@ class K8SMgr:
                 }
             }
 
-            ret = self.v1.patch_namespaced_config_map(name=cmname, namespace=ns, body=tmp_map)
+            _ = self.v1.patch_namespaced_config_map(name=cmname, namespace=ns, body=tmp_map)
 
-        except ApiException as e:
-            self.logger.error(f'Failed to replace configmap {cmname} in namespace {ns}')
+        except ApiException:
+            self.logger.error(f'Failed to patch configmap {cmname} in namespace {ns}')
             return False
 
         return True
@@ -409,13 +398,13 @@ class K8SMgr:
     # def GetKeyFromConfigMap(self, ns, cmname):
     #     """ Returns the name of the first key in a configmap """
     #     try:
-    #         resp = self.v1.read_namespaced_config_map(name=cmname, namespace=ns)     
+    #         resp = self.v1.read_namespaced_config_map(name=cmname, namespace=ns)
     #         keyname = list(resp.data.keys())[0]
-    #         return keyname   
+    #         return keyname
     #     except ApiException as e:
     #         self.logger.error(f'Failed to get keyname from configmap {cmname} in namespace {ns}')
 
-    #     return ''        
+    #     return ''
 
     # def CopyConfigMap(self, ns, oldcm, cmbody):
     #     """ Replaces a ConfigMap object with a new one """
@@ -441,9 +430,9 @@ class K8SMgr:
     #         return False
 
     #     return cmname
-     
+
     # def ReplaceVolumeMountConfigMap(self, podname, ns, oldcm, newcm):
-    #     """ Replaces the configmap object in the volume mount of an old configmap """    
+    #     """ Replaces the configmap object in the volume mount of an old configmap """
     #     try:
     #         ret = self.v1.read_namespaced_pod(podname, ns)
     #     except ApiException as e:
@@ -454,9 +443,6 @@ class K8SMgr:
     #         if v.config_map is not None:
     #             if v.config_map.name == oldcm:
     #                 # We want to replace this configmap object
-                    
-
-                                  
 
     def BindPodToNode(self, podname, node, ns):
         """ Binds a pod to a node to start the deployment process. """
@@ -465,7 +451,7 @@ class K8SMgr:
             target.kind   = "Node"
             target.apiVersion = "v1"
             target.name   = node
-            
+
             meta          = client.V1ObjectMeta()
             meta.name     = podname
             body          = client.V1Binding(target=target, metadata=meta)
@@ -477,7 +463,7 @@ class K8SMgr:
         except ApiException as e:
             self.logger.error(f'Failed to bind pod {podname} to node {node} in namespace {ns}: {e}')
             return False
-        except ValueError as e:
+        except ValueError:
             # This is not a real error. It's a problem in the API waiting to be fixed:
             # https://github.com/kubernetes-client/python/issues/547
             pass
@@ -485,21 +471,18 @@ class K8SMgr:
         return True
 
     def GetCfgType(self, pod: str, ns: str) -> str:
-        """
-        Gets the configuration type from the pod's annotations
-        """
+        """ Gets the configuration type from the pod's annotations """
         k = 'sigproc.viasat.io/cfg_type'
         try:
-            annot = self.GetPodAnnotations(ns, pod)
-            if annot == None:
-                self.logger.error(f'Couldn\'t find pod annotations for pod {ns}.{pod}')
+            annot = self.GetPodAnnotations(pod, ns)
+            if annot is None:
+                self.logger.error(f'Could not find pod annotations for pod {ns}.{pod}')
                 return ''
 
             return annot[k]
         except KeyError as e:
             self.logger.error(f'Key [{e}] not found in pod annotations for {ns}.{pod}')
             return ''
-
 
     def GetTimeNow(self) -> str:
         """
@@ -514,7 +497,7 @@ class K8SMgr:
     def GeneratePodEvent(self, podobj, podname, ns, reason, _type, message):
         """ Generates a pod event on the kubernetes API server """
         try:
-            meta  = client.V1ObjectMeta()
+            meta = client.V1ObjectMeta()
             meta.name = f'{podname}.{self.GetRandomUid()}'
             meta.namespace = ns
 
@@ -539,19 +522,17 @@ class K8SMgr:
 
             # Log an event in our pod too instead of duplicating externally
             lg(f'Event for pod {ns}/{podname} -- Reason={reason}, message={message}')
-            event = client.V1Event( involved_object=invobj, 
-                                    source = evtsrc, 
-                                    metadata=meta, 
-                                    reason=reason, 
-                                    message=f'NHD: {message}', 
-                                    count=1, 
-                                    type=etype, 
-                                    first_timestamp=timestamp, 
-                                    last_timestamp=timestamp)
+            event = client.V1Event(involved_object=invobj,
+                                   source=evtsrc,
+                                   metadata=meta,
+                                   reason=reason,
+                                   message=f'NHD: {message}',
+                                   count=1,
+                                   type=etype,
+                                   first_timestamp=timestamp,
+                                   last_timestamp=timestamp)
 
             self.v1.create_namespaced_event(namespace=ns, body=event)
 
         except ApiException as e:
             self.logger.error(f'Failed to send event for pod {podname}: {e}')
-
-
