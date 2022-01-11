@@ -66,6 +66,7 @@ class NodeMemory:
     def __init__(self):
         self.ttl_hugepages_gb = 0
         self.free_hugepages_gb = 0
+        self.res_hugepages_gb = 0
         self.ttl_mem_gb = 0
         self.free_mem_gb = 0 
 
@@ -128,6 +129,7 @@ class Node:
         self.gwip : str = '0.0.0.0/32'
         self.mem: NodeMemory = NodeMemory()
         self.reserved_cores = [] # Reserved CPU cores
+
 
     @staticmethod
     def GetMaintenance(labels):
@@ -445,6 +447,10 @@ class Node:
         self.gwip = labels['DATA_DEFAULT_GW']
         self.logger.info(f'Read data plane default GW as {self.gwip}')
 
+        if 'RES_HUGEPAGES_GB' in labels:
+            self.mem.res_hugepages_gb = int(labels['RES_HUGEPAGES_GB'])
+            self.logger.info(f'Reserving {self.mem.res_hugepages_gb} hugepages-1Gi')
+
         return True
 
     def GetFreeNumaGPUs(self):
@@ -482,7 +488,7 @@ class Node:
 
     def SetHugepages(self, alloc: int, free: int) -> bool: 
         self.mem.ttl_hugepages_gb  = alloc
-        self.mem.free_hugepages_gb = free
+        self.mem.free_hugepages_gb = free - self.mem.res_hugepages_gb
         self.logger.info(f'Found {self.mem.free_hugepages_gb}/{self.mem.ttl_hugepages_gb}GB of hugepages allocatable/capacity on node {self.name}')
         return True
 
