@@ -360,7 +360,7 @@ class K8SMgr:
         """ Publish pod GPU mappings as annotations for pod """
         for key in gpumap:
             try:
-                self.logger.info(f'Aannotating pod  GPU MAP: device: {key}, GPU:{gpumap[key]}')
+                self.logger.info(f'Annotating pod  GPU MAP: device: {key}, GPU:{gpumap[key]}')
                 self.v1.patch_namespaced_pod(podname, ns, body={
                     "metadata": {
                         "annotations": {
