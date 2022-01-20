@@ -177,6 +177,7 @@ class Node:
                 return n
         return None
 
+        
     def GetNICUsedSpeeds(self):
         """ Gets the RX and TX speeds used on each NIC """
         nicres = []
@@ -756,6 +757,16 @@ class Node:
                         
                         self.logger.info(f'Adding node {self.name} interface {self.nics[idx].ifname} with mac {self.nics[idx].mac} to core {groupc.core}')
                         ng.AddInterface(self.nics[idx].mac)
+
+                        if ng.dual_port:
+                            primary_nic_name=self.nics[idx].ifname
+                            backup_nic_name=self.nics[idx].ifname[:-1]+'1'
+                            bidx = -1
+                            for a in self.nics:
+                                    bidx += 1
+                                    if a.ifname == backup_nic_name:
+                                        used_nics.append((bidx, groupc.nic_speed, groupc.nic_dir))
+                                        continue
 
                 # Check that we used all the CPU cores
                 if cidx != len(group_cpus):

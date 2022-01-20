@@ -220,8 +220,15 @@ class TriadCfgParser(CfgParser):
                                 c = int(magicattr.get(self.cfg, name))
                                 tx_core = Core(name, tx_speed, NICCoreDirection.NIC_CORE_DIRECTION_TX, NUMASetting.LOGICAL_NUMA_GROUP, c)
                                 pg.AddGroupCore(tx_core)
+    
 
-                                self.top.AddNicPairing(rx_core, tx_core)
+                                dual_port = magicattr.get(self.cfg, f'{mattr}.{m.dp_group.name}[0].dual_port')
+                                if dual_port:
+                                # if dual port is detected - add backup cores
+                                    self.logger.warn(f'dual_port  setting detected - will configure failover NIC')
+
+                                self.top.AddNicPairing(rx_core, tx_core, dual_port)
+
                         except:
                             self.logger.error('Error when parsing NIC fields. Maybe forgot rx/tx_speeds?')
                             return False
@@ -322,6 +329,7 @@ class TriadCfgParser(CfgParser):
                     return False             
                 
                 ng.AddInterface(net.mac)
+
 
                 try:
                     rs = int(net.rx_mbufs[rxi])
