@@ -17,6 +17,7 @@ from collections import defaultdict
 
 NIC_BW_AVAIL_PERCENT                = 0.9 # Only allow NICs to be scheduled up to this much of their total capacity
 SCHEDULABLE_NIC_SPEED_THRESH_MBPS   = 11000 # Don't include NICs for scheduling that are below this speed
+BACKUP_NIC_LABEL                    = "bkp" # Whenever this string is part of the nic NFD label - it is treated as "backup"
 ENABLE_SHARING                      = False # Allow pods to share a NIC
 
 
@@ -38,7 +39,7 @@ class NodeNic:
     """
     Properties of a NIC inside of a node
     """
-    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int):
+    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int, extra_label: str):
         self.ifname = ifname
         self.vendor = vendor
         self.speed = speed
@@ -48,6 +49,7 @@ class NodeNic:
         self.pciesw = pciesw
         self.card = card
         self.port = port
+        self.extra_label = extra_label
 
         # The MAC is in a weird format from NFD, so fix it here
         self.mac    = self.FormatMac(mac)
@@ -284,6 +286,9 @@ class Node:
         ninfo = [[] for _ in range(self.numa_nodes)]
 
         for n in self.nics:
+            # Exclude from scheduling any NIC-s labeled as "backup"
+            if n.extra_label == BACKUP_NIC_LABEL:
+                continue
             try:
                 if ENABLE_SHARING:
                     ninfo[n.numa_node].append([n.speed*NIC_BW_AVAIL_PERCENT - n.speed_used[x] for x in range(2)])
@@ -390,6 +395,13 @@ class Node:
 
                 (ifname, vendor, mac, speed, numa_node, pciesw, card, port) = (p[4], p[5], p[6], p[7], int(p[8]), int(p[9],16), int(p[10],16), int(p[11]))
 
+                extra_label = ''
+                try:
+                    extra_label = p[12]
+                    self.logger.info(f'Extra label {extra_label} found for interface {ifname}')
+                except:
+                    self.logger.info(f'Extra label does not exist for interface {ifname}')
+
                 if ifname in pfs:
                     continue
 
@@ -404,9 +416,9 @@ class Node:
                                     f'{SCHEDULABLE_NIC_SPEED_THRESH_MBPS} required. Excluding from schedulable list')
                     continue
 
-                self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, pciesw, card, port))
+                self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, pciesw, card, port, extra_label))
                 self.logger.info(f'Updated NIC with ifname={ifname} vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node}, '\
-                                    f'PCIe switch={pciesw}, card={card}, port={port} to node {self.name}')
+                                    f'PCIe switch={pciesw}, card={card}, port={port} , extra_label={extra_label} to node {self.name}')
 
         # Set all the node indices
         if len(self.nics):
