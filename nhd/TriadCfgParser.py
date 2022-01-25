@@ -222,7 +222,8 @@ class TriadCfgParser(CfgParser):
                                 pg.AddGroupCore(tx_core)
     
 
-                                dual_port = magicattr.get(self.cfg, f'{mattr}.{m.dp_group.name}[0].dual_port')
+                                #if self.cfg.dual_port: - use this to move dual_port to top level of the triad cfg
+                                dual_port = self.cfg.TopologyCfg.dual_port
                                 if dual_port:
                                 # if dual port is detected - add backup cores
                                     self.logger.warn(f'dual_port  setting detected - will configure failover NIC')
