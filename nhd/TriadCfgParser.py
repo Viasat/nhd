@@ -223,7 +223,14 @@ class TriadCfgParser(CfgParser):
     
 
                                 #if self.cfg.dual_port: - use this to move dual_port to top level of the triad cfg
-                                dual_port = self.cfg.TopologyCfg.dual_port
+                                try:
+                                    # See if dual_port is set to true/false in the config file
+                                    dual_port = self.cfg.TopologyCfg.dual_port
+                                except:
+                                    # Detect missing dual_port parameter in config and set it to false
+                                    self.logger.warn(f'dual_port parameter NOT detected in topology config - setting to False')
+                                    dual_port = False
+
                                 if dual_port:
                                 # if dual port is detected - add backup cores
                                     self.logger.warn(f'dual_port  setting detected - will configure failover NIC')

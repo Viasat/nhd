@@ -39,7 +39,7 @@ class NodeNic:
     """
     Properties of a NIC inside of a node
     """
-    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int, extra_label: str):
+    def __init__(self, ifname: str, mac: str, vendor: str, speed: int, numa_node: int, pciesw: int, card: int, port: int, extra_label: str, sriov: bool):
         self.ifname = ifname
         self.vendor = vendor
         self.speed = speed
@@ -50,6 +50,7 @@ class NodeNic:
         self.card = card
         self.port = port
         self.extra_label = extra_label
+        self.sriov = sriov
 
         # The MAC is in a weird format from NFD, so fix it here
         self.mac    = self.FormatMac(mac)
@@ -396,6 +397,7 @@ class Node:
                 (ifname, vendor, mac, speed, numa_node, pciesw, card, port) = (p[4], p[5], p[6], p[7], int(p[8]), int(p[9],16), int(p[10],16), int(p[11]))
 
                 extra_label = ''
+                sriov = False
                 try:
                     extra_label = p[12]
                     self.logger.info(f'Extra label {extra_label} found for interface {ifname}')
@@ -403,6 +405,7 @@ class Node:
                     self.logger.info(f'Extra label does not exist for interface {ifname}')
 
                 if ifname in pfs:
+                    sriov = True
                     continue
 
                 if 'Mbs' in speed:
@@ -416,9 +419,9 @@ class Node:
                                     f'{SCHEDULABLE_NIC_SPEED_THRESH_MBPS} required. Excluding from schedulable list')
                     continue
 
-                self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, pciesw, card, port, extra_label))
+                self.nics.append(NodeNic(ifname, mac, vendor, speed/1e3, numa_node, pciesw, card, port, extra_label,sriov))
                 self.logger.info(f'Updated NIC with ifname={ifname} vendor={vendor}, mac={mac}, speed={speed}Mbps, numa_node={numa_node}, '\
-                                    f'PCIe switch={pciesw}, card={card}, port={port} , extra_label={extra_label} to node {self.name}')
+                                    f'PCIe switch={pciesw}, card={card}, port={port} , extra_label={extra_label}, sriov={sriov} to node {self.name}')
 
         # Set all the node indices
         if len(self.nics):
@@ -771,8 +774,18 @@ class Node:
                         ng.AddInterface(self.nics[idx].mac)
 
                         if ng.dual_port:
+                            
                             primary_nic_name=self.nics[idx].ifname
-                            backup_nic_name=self.nics[idx].ifname[:-1]+'1'
+                            
+                            if self.nics[idx].sriov == True:
+                                # For sriov we for now assume that port1 has vfs 0-3
+                                # and port2 has vfs 4-7. Later we will parametrize this. 
+                                sriov_index = self.nics[idx].ifname[-1]
+                                backup_nic_name=self.nics[idx].ifname[:-1]+str(int(sriov_index) + 4)
+                            else:
+                                #For the GPU nics we assume just 2 vf-s per pf so backup will always take index 1
+                                backup_nic_name=self.nics[idx].ifname[:-1]+'1'
+                            
                             bidx = -1
                             for a in self.nics:
                                     bidx += 1
