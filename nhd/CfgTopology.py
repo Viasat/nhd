@@ -54,12 +54,14 @@ class Core:
 
         self.core = core # Filled in by scheduler
 
+
 class NICGroup:
-    def __init__(self, rx_core, tx_core):
+    def __init__(self, rx_core, tx_core, dual_port):
         self.rx_core = rx_core
         self.tx_core = tx_core
         self.mac = ""
         self.rx_ring_size = 4096 # Come back and fix this later 
+        self.dual_port = dual_port
 
     def AddInterface(self, mac):
         self.mac = mac
@@ -148,8 +150,8 @@ class CfgTopology:
             self.hugepages_gb = res['hugepages-1Gi']
             self.logger.info(f'Pod requesting {self.hugepages_gb} 1GB hugepages')
 
-    def AddNicPairing(self, rx_core: Core, tx_core: Core):
-        self.nic_core_pairing.append(NICGroup(rx_core, tx_core))
+    def AddNicPairing(self, rx_core: Core, tx_core: Core, dual_port: bool):
+        self.nic_core_pairing.append(NICGroup(rx_core, tx_core, dual_port))
 
     def SetCtrlVlan(self, vlan: VLANInfo):
         self.ctrl_vlan = vlan
