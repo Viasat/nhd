@@ -145,26 +145,26 @@ class TriadCfgParser(CfgParser):
         
         self.top.SetTopMapType(self.cfg.TopologyCfg.map_type)
 
-        for m in self.cfg.TopologyCfg.mod_defs:
-            self.logger.debug(f'Searching config for modules with pattern {m.module}')
-            if m.module in self.cfg:
-                self.logger.info(f'Found module {m.module} at top level in config. Parsing topology...')
+        for md in self.cfg.TopologyCfg.mod_defs:
+            self.logger.debug(f'Searching config for modules with pattern {md.module}')
+            if md.module in self.cfg:
+                self.logger.info(f'Found module {md.module} at top level in config. Parsing topology...')
 
-                for idx,mi in enumerate(self.cfg[m.module]):
-                    self.logger.info(f'Processing module {mi.module} of type {m.module}')
+                for idx, mi in enumerate(self.cfg[md.module]):
+                    self.logger.info(f'Processing module {mi.module} of type {md.module}')
                     clist = []
                     pg = ProcGroup()
 
-                    mattr = f'{m.module}[{idx}]'
-                    if 'helper_cores' in m:
-                        if 'helper_cores_smt' not in m:
+                    mattr = f'{md.module}[{idx}]'
+                    if 'helper_cores' in md:
+                        if 'helper_cores_smt' not in md:
                             self.logger.error('helper_cores_smt not defined in module!')
                             return False
 
-                        smt = SMTSetting.SMT_ENABLED if m.helper_cores_smt else SMTSetting.SMT_DISABLED
+                        smt = SMTSetting.SMT_ENABLED if md.helper_cores_smt else SMTSetting.SMT_DISABLED
                         pg.SetHelperSmt(smt)
 
-                        for hc in m.helper_cores:
+                        for hc in md.helper_cores:
                             name = f'{mattr}.{hc}'
                             attr = magicattr.get(self.cfg, name)
                             if type(attr) == list:
@@ -180,19 +180,19 @@ class TriadCfgParser(CfgParser):
                     else:
                         self.logger.debug(f'Helper cores not found in {mi.module}')
 
-                    if 'data_vlan' in m:
-                        name = f'{mattr}.{m.data_vlan}'
+                    if 'data_vlan' in md:
+                        name = f'{mattr}.{md.data_vlan}'
                         self.logger.info(f'Setting data plane VLAN to {name}')
                         pg.SetDataVlan(VLANInfo(name, 0)) # Don't need to set the VLAN from the config since it doesn't matter
 
                     # Parse data path groups. 
-                    if 'dp_group' in m:
+                    if 'dp_group' in md:
                         self.logger.info(f'Processing data path group for module {mi.module}')
 
                         try: 
-                            attr = magicattr.get(self.cfg, f'{mattr}.{m.dp_group.name}')
+                            attr = magicattr.get(self.cfg, f'{mattr}.{md.dp_group.name}')
                         except:
-                            self.logger.error(f'Could not find attribute {m.dp_group.name} in {mattr}')
+                            self.logger.error(f'Could not find attribute {md.dp_group.name} in {mattr}')
                             return False
 
                         if len(attr) != 1:
@@ -203,20 +203,20 @@ class TriadCfgParser(CfgParser):
                             self.logger.error('Error in module {mattr} Must have same number of cores in speeds and core list in a DP group!')
                             return False
 
-                        smtp = SMTSetting.SMT_ENABLED if m.dp_group.proc_cores_smt else SMTSetting.SMT_DISABLED
+                        smtp = SMTSetting.SMT_ENABLED if md.dp_group.proc_cores_smt else SMTSetting.SMT_DISABLED
                         pg.SetProcSmt(smtp)
 
                         self.logger.info(f'Found {len(attr[0].rx_cores)*2} NIC cores in GPU map')
                         try:
                             for gidx in range(len(attr[0].rx_cores)):
-                                name = f'{mattr}.{m.dp_group.name}[0].rx_cores[{gidx}]'
-                                rx_speed = magicattr.get(self.cfg, f'{mattr}.{m.dp_group.name}[0].rx_speeds[{gidx}]')
+                                name = f'{mattr}.{md.dp_group.name}[0].rx_cores[{gidx}]'
+                                rx_speed = magicattr.get(self.cfg, f'{mattr}.{md.dp_group.name}[0].rx_speeds[{gidx}]')
                                 c = int(magicattr.get(self.cfg, name))
                                 rx_core = Core(name, rx_speed, NICCoreDirection.NIC_CORE_DIRECTION_RX, NUMASetting.LOGICAL_NUMA_GROUP, c)
                                 pg.AddGroupCore(rx_core)
 
-                                name = f'{mattr}.{m.dp_group.name}[0].tx_cores[{gidx}]'
-                                tx_speed = magicattr.get(self.cfg, f'{mattr}.{m.dp_group.name}[0].tx_speeds[{gidx}]')
+                                name = f'{mattr}.{md.dp_group.name}[0].tx_cores[{gidx}]'
+                                tx_speed = magicattr.get(self.cfg, f'{mattr}.{md.dp_group.name}[0].tx_speeds[{gidx}]')
                                 c = int(magicattr.get(self.cfg, name))
                                 tx_core = Core(name, tx_speed, NICCoreDirection.NIC_CORE_DIRECTION_TX, NUMASetting.LOGICAL_NUMA_GROUP, c)
                                 pg.AddGroupCore(tx_core)
@@ -245,7 +245,7 @@ class TriadCfgParser(CfgParser):
                             # CPU workers (no GPUs)
                             self.logger.info(f'Found {len(attr[0].cpu_workers)} CPU worker cores')
                             for cidx in range(len(attr[0].cpu_workers)):
-                                cpuname = f'{mattr}.{m.dp_group.name}[0].cpu_workers[{cidx}]'
+                                cpuname = f'{mattr}.{md.dp_group.name}[0].cpu_workers[{cidx}]'
                                 c = int(magicattr.get(self.cfg, cpuname))
                                 cpucore = Core(cpuname, 0, NICCoreDirection.NIC_CORE_DIRECTION_NONE, NUMASetting.LOGICAL_NUMA_GROUP, c)
                                 pg.AddGroupCore(cpucore)                                
@@ -256,13 +256,16 @@ class TriadCfgParser(CfgParser):
                         gpumap = collections.defaultdict(list)
 
                         for gidx in range(len(attr[0].gpu_map)):
-                            cpuname = f'{mattr}.{m.dp_group.name}[0].gpu_map[{gidx}][0]'
-                            gpu_dev_id = f'{mattr}.{m.dp_group.name}[0].gpu_map[{gidx}][1]'
+                            if len(attr[0].gpu_map[gidx]) == 2:
+                                cpuname = f'{mattr}.{md.dp_group.name}[0].gpu_map[{gidx}][0]'
+                                gpu_dev_id = f'{mattr}.{md.dp_group.name}[0].gpu_map[{gidx}][1]'
 
-                            gpumap[attr[0].gpu_map[gidx][1]].append((gpu_dev_id, cpuname))
+                                gpumap[attr[0].gpu_map[gidx][1]].append((gpu_dev_id, cpuname))
+                            else:
+                                self.logger.error(f'GPU cores entry [{gidx}] in GPU map is not valid - not processing')
 
-                        if 'gpu_type' in m.dp_group:
-                            gputype = pg.GetGpuType(m.dp_group.gpu_type)
+                        if 'gpu_type' in md.dp_group:
+                            gputype = pg.GetGpuType(md.dp_group.gpu_type)
                         else:
                             self.logger.info('No GPU type specified in dp_groups. Allowing any type')
                             gputype = pg.GetGpuType("ANY")
@@ -275,37 +278,37 @@ class TriadCfgParser(CfgParser):
                             pg.SetGpuType(gputype)
                             pg.AddGroupGPU(GPU(clist, gdevlist, gputype, gkey))
 
-                    if 'nic_cores' in m:
+                    if 'nic_cores' in md:
                         self.logger.info(f'Processing NIC cores (non-data path) for module {mi.module}')
-                        if len(m.nic_cores) != 5:
-                            self.logger.error(f'Wrong number of parameters for NIC cores specification in {m.module}')
+                        if len(md.nic_cores) != 5:
+                            self.logger.error(f'Wrong number of parameters for NIC cores specification in {md.module}')
                             return False
 
                         try: 
-                            rx_cores  = magicattr.get(self.cfg, f'{mattr}.{m.nic_cores[0]}')
-                            rx_speeds = magicattr.get(self.cfg, f'{mattr}.{m.nic_cores[1]}')
-                            tx_cores  = magicattr.get(self.cfg, f'{mattr}.{m.nic_cores[2]}')
-                            tx_speeds = magicattr.get(self.cfg, f'{mattr}.{m.nic_cores[3]}')
+                            rx_cores  = magicattr.get(self.cfg, f'{mattr}.{md.nic_cores[0]}')
+                            rx_speeds = magicattr.get(self.cfg, f'{mattr}.{md.nic_cores[1]}')
+                            tx_cores  = magicattr.get(self.cfg, f'{mattr}.{md.nic_cores[2]}')
+                            tx_speeds = magicattr.get(self.cfg, f'{mattr}.{md.nic_cores[3]}')
                         except:
-                            self.logger.error(f'Could not find NIC attributes for {m.module} in {mattr}')
+                            self.logger.error(f'Could not find NIC attributes for {md.module} in {mattr}')
                             return False                            
                     
                         if len(rx_cores) != len(rx_speeds) != len(tx_cores) != len(tx_speeds):
                             self.logger.error(f'All speed and core lengths must be the same for {mattr}')
                             return False
 
-                        smtc = SMTSetting.SMT_ENABLED if m.nic_cores[4] else SMTSetting.SMT_DISABLED
+                        smtc = SMTSetting.SMT_ENABLED if md.nic_cores[4] else SMTSetting.SMT_DISABLED
                         pg.SetProcSmt(smtc)
                         for gidx in range(len(rx_cores)):
-                            name = f'{mattr}.{m.nic_cores[0]}[{gidx}]'
-                            rx_speed = magicattr.get(self.cfg, f'{mattr}.{m.nic_cores[1]}[{gidx}]')
+                            name = f'{mattr}.{md.nic_cores[0]}[{gidx}]'
+                            rx_speed = magicattr.get(self.cfg, f'{mattr}.{md.nic_cores[1]}[{gidx}]')
                             self.logger.info(f'Adding core {name} with speed {rx_speed}')
                             c = int(magicattr.get(self.cfg, name))
                             rx_core = Core(name, rx_speed, NICCoreDirection.NIC_CORE_DIRECTION_RX, NUMASetting.LOGICAL_NUMA_GROUP, c)
                             pg.AddGroupCore(rx_core)
 
-                            name = f'{mattr}.{m.nic_cores[2]}[{gidx}]'
-                            tx_speed = magicattr.get(self.cfg, f'{mattr}.{m.nic_cores[3]}[{gidx}]')
+                            name = f'{mattr}.{md.nic_cores[2]}[{gidx}]'
+                            tx_speed = magicattr.get(self.cfg, f'{mattr}.{md.nic_cores[3]}[{gidx}]')
                             self.logger.info(f'Adding core {name} with speed {tx_speed}')
                             c = int(magicattr.get(self.cfg, name))
                             tx_core = Core(name, tx_speed, NICCoreDirection.NIC_CORE_DIRECTION_TX, NUMASetting.LOGICAL_NUMA_GROUP, c)
@@ -315,7 +318,7 @@ class TriadCfgParser(CfgParser):
 
                     self.top.proc_groups.append(pg)
             else:
-                self.logger.error(f'Module {m.module} not found in config. Make sure each topology module has a real module mapping to it')
+                self.logger.error(f'Module {md.module} not found in config. Make sure each topology module has a real module mapping to it')
                 return False
 
         return True
