@@ -1,6 +1,6 @@
 kubernetes==17.17.0
 colorlog>=4.0.2
-grpcio==1.27.2
+grpcio==1.53.0
 libconf>=2.0.0
 magicattr>=0.1.4
 wheel
